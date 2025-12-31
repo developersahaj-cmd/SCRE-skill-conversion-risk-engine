@@ -1,0 +1,949 @@
+import React, { useMemo, useState } from "react";
+
+
+
+import { base44 } from "@/api/base44Client";
+
+
+
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+
+
+
+import { Link } from "react-router-dom";
+
+
+
+import { createPageUrl } from "@/utils";
+
+
+
+import { Button } from "@/components/ui/button";
+
+
+
+import { Plus, ArrowLeft } from "lucide-react";
+
+
+
+import ProjectFilters from "../components/projects/ProjectFilters";
+
+
+
+import ProjectCard from "../components/projects/ProjectCard";
+
+
+
+import { AnimatePresence } from "framer-motion";
+
+
+
+import {
+
+  Dialog,
+
+  DialogContent,
+
+  DialogHeader,
+
+  DialogTitle,
+
+  DialogTrigger,
+
+} from "@/components/ui/dialog";
+
+
+
+import { Input } from "@/components/ui/input";
+
+
+
+import { Label } from "@/components/ui/label";
+
+
+
+import {
+
+  Select,
+
+  SelectContent,
+
+  SelectItem,
+
+  SelectTrigger,
+
+  SelectValue,
+
+} from "@/components/ui/select";
+
+
+
+import { Textarea } from "@/components/ui/textarea";
+
+
+
+/* =========================================================
+
+   // SAFE INTEGRATION LAYER (Non-breaking)
+
+   Optional / isolated adapters for:
+
+   - Firebase (auth + profile only)
+
+   - Gemini (insight generation only)
+
+   - BigQuery (analytics logging only)
+
+   - Vertex AI (model inference behind abstraction)
+
+   - Vertex Explainable AI (explanation enrichment only)
+
+   Guards:
+
+   - lazy loading
+
+   - try/catch
+
+   - feature flags
+
+   - fallback no-op implementations
+
+   - NO global side effects
+
+========================================================= */
+
+
+
+const SAFE_FEATURES = {
+
+  firebaseAuthProfile: false,
+
+  geminiInsights: false,
+
+  bigqueryAnalytics: false,
+
+  vertexInference: false,
+
+  vertexExplainability: false,
+
+};
+
+
+
+function getSafeFeatureFlag(flagName, fallbackValue = false) {
+
+  // SAFE INTEGRATION LAYER (Non-breaking)
+
+  try {
+
+    // Prefer runtime flags if provided by host app, otherwise fallback
+
+    // Example host override:
+
+    // window.__SCRE_FEATURES__ = { bigqueryAnalytics: true }
+
+    const w =
+
+      typeof window !== "undefined" && window && window.__SCRE_FEATURES__
+
+        ? window.__SCRE_FEATURES__
+
+        : null;
+
+
+
+    if (w && Object.prototype.hasOwnProperty.call(w, flagName)) {
+
+      return Boolean(w[flagName]);
+
+    }
+
+    if (Object.prototype.hasOwnProperty.call(SAFE_FEATURES, flagName)) {
+
+      return Boolean(SAFE_FEATURES[flagName]);
+
+    }
+
+    return Boolean(fallbackValue);
+
+  } catch {
+
+    return Boolean(fallbackValue);
+
+  }
+
+}
+
+
+
+async function safeLazyImport(modulePath) {
+
+  // SAFE INTEGRATION LAYER (Non-breaking)
+
+  try {
+
+    // Dynamic import must be inside try/catch and called only when needed.
+
+    return await import(/* @vite-ignore */ modulePath);
+
+  } catch {
+
+    return null;
+
+  }
+
+}
+
+
+
+const SafeFirebase = {
+
+  // SAFE INTEGRATION LAYER (Non-breaking)
+
+  async getAuthUser() {
+
+    try {
+
+      if (!getSafeFeatureFlag("firebaseAuthProfile")) return null;
+
+
+
+      // NOTE: Path is intentionally not assumed; adapt if your app has a known module.
+
+      // This returns null if module missing/unavailable.
+
+      const mod = await safeLazyImport("@/integrations/firebase");
+
+      if (!mod || typeof mod.getAuthUser !== "function") return null;
+
+
+
+      return await mod.getAuthUser();
+
+    } catch {
+
+      return null;
+
+    }
+
+  },
+
+
+
+  async upsertUserProfile(_profile) {
+
+    try {
+
+      if (!getSafeFeatureFlag("firebaseAuthProfile")) return;
+
+
+
+      const mod = await safeLazyImport("@/integrations/firebase");
+
+      if (!mod || typeof mod.upsertUserProfile !== "function") return;
+
+
+
+      await mod.upsertUserProfile(_profile);
+
+    } catch {
+
+      // no-op
+
+    }
+
+  },
+
+};
+
+
+
+const SafeGemini = {
+
+  // SAFE INTEGRATION LAYER (Non-breaking)
+
+  async generateProjectInsights(_project) {
+
+    try {
+
+      if (!getSafeFeatureFlag("geminiInsights")) return null;
+
+
+
+      // Must be insight generation only, non-blocking.
+
+      const mod = await safeLazyImport("@/integrations/gemini");
+
+      if (!mod || typeof mod.generateProjectInsights !== "function") return null;
+
+
+
+      return await mod.generateProjectInsights(_project);
+
+    } catch {
+
+      return null;
+
+    }
+
+  },
+
+};
+
+
+
+const SafeBigQuery = {
+
+  // SAFE INTEGRATION LAYER (Non-breaking)
+
+  async logEvent(_eventName, _payload) {
+
+    try {
+
+      if (!getSafeFeatureFlag("bigqueryAnalytics")) return;
+
+
+
+      // Analytics must be async, fire-and-forget.
+
+      const mod = await safeLazyImport("@/integrations/bigquery");
+
+      if (!mod || typeof mod.logEvent !== "function") return;
+
+
+
+      // Intentionally not awaited by callers.
+
+      await mod.logEvent(_eventName, _payload);
+
+    } catch {
+
+      // no-op
+
+    }
+
+  },
+
+};
+
+
+
+const SafeVertex = {
+
+  // SAFE INTEGRATION LAYER (Non-breaking)
+
+  async inferSkillConversionRisk(_input) {
+
+    try {
+
+      if (!getSafeFeatureFlag("vertexInference")) {
+
+        // Neutral adapter: empty/mocked result to prevent breaking behavior.
+
+        return null;
+
+      }
+
+
+
+      const mod = await safeLazyImport("@/integrations/vertex");
+
+      if (!mod || typeof mod.inferSkillConversionRisk !== "function") return null;
+
+
+
+      return await mod.inferSkillConversionRisk(_input);
+
+    } catch {
+
+      return null;
+
+    }
+
+  },
+
+
+
+  async enrichExplanation(_explanation) {
+
+    try {
+
+      if (!getSafeFeatureFlag("vertexExplainability")) {
+
+        // Neutral adapter
+
+        return _explanation ?? null;
+
+      }
+
+
+
+      const mod = await safeLazyImport("@/integrations/vertexExplainableAI");
+
+      if (!mod || typeof mod.enrichExplanation !== "function") return _explanation ?? null;
+
+
+
+      return await mod.enrichExplanation(_explanation);
+
+    } catch {
+
+      return _explanation ?? null;
+
+    }
+
+  },
+
+};
+
+
+
+export default function Projects() {
+
+  const [filters, setFilters] = useState({
+
+    search: "",
+
+    department: "all",
+
+    riskLevel: "all",
+
+    status: "all",
+
+  });
+
+
+
+  // Least-invasive correction: normalize dialog state naming
+
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+
+
+  // Least-invasive correction: complete missing object keys/values safely
+
+  const [newProject, setNewProject] = useState({
+
+    project_name: "",
+
+    department: "",
+
+    source_skill: "",
+
+    target_skill: "",
+
+    status: "planning",
+
+    risk_level: "medium",
+
+    employees_affected: 0,
+
+    description: "",
+
+  });
+
+
+
+  const queryClient = useQueryClient();
+
+
+
+  const { data: projects = [], isLoading } = useQuery({
+
+    queryKey: ["projects"],
+
+    queryFn: () => base44.entities.SkillConversionProject.list("-created_date"),
+
+  });
+
+
+
+  const createProjectMutation = useMutation({
+
+    mutationFn: (data) => base44.entities.SkillConversionProject.create(data),
+
+    onSuccess: async (created) => {
+
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+
+      setDialogOpen(false);
+
+      setNewProject({
+
+        project_name: "",
+
+        department: "",
+
+        source_skill: "",
+
+        target_skill: "",
+
+        status: "planning",
+
+        risk_level: "medium",
+
+        employees_affected: 0,
+
+        description: "",
+
+      });
+
+
+
+      // SAFE INTEGRATION LAYER (Non-breaking)
+
+      // Optional, fire-and-forget analytics + optional insights.
+
+      try {
+
+        // BigQuery fire-and-forget (do not block UI)
+
+        void SafeBigQuery.logEvent("project_created", {
+
+          id: created?.id ?? null,
+
+          project_name: created?.project_name ?? null,
+
+          department: created?.department ?? null,
+
+          risk_level: created?.risk_level ?? null,
+
+          status: created?.status ?? null,
+
+          ts: Date.now(),
+
+        });
+
+
+
+        // Gemini insight generation is non-blocking and does not affect UX
+
+        void SafeGemini.generateProjectInsights(created ?? newProject);
+
+      } catch {
+
+        // no-op
+
+      }
+
+    },
+
+  });
+
+
+
+  const handleCreateProject = () => {
+
+    // Least-invasive correction: perform mutation here (was previously misplaced)
+
+    createProjectMutation.mutate(newProject);
+
+
+
+    // SAFE INTEGRATION LAYER (Non-breaking)
+
+    // Optional analytics for attempt; fire-and-forget.
+
+    try {
+
+      void SafeBigQuery.logEvent("project_create_attempt", {
+
+        project_name: newProject?.project_name ?? null,
+
+        department: newProject?.department ?? null,
+
+        risk_level: newProject?.risk_level ?? null,
+
+        status: newProject?.status ?? null,
+
+        ts: Date.now(),
+
+      });
+
+    } catch {
+
+      // no-op
+
+    }
+
+  };
+
+
+
+  // Filter projects (least-invasive: keep same intent, fix syntax)
+
+  const filteredProjects = useMemo(() => {
+
+    return (projects || []).filter((project) => {
+
+      const search = (filters.search || "").toLowerCase();
+
+      const pn = (project?.project_name || "").toLowerCase();
+
+      const ss = (project?.source_skill || "").toLowerCase();
+
+      const ts = (project?.target_skill || "").toLowerCase();
+
+
+
+      const matchesSearch =
+
+        !search ||
+
+        pn.includes(search) ||
+
+        ss.includes(search) ||
+
+        ts.includes(search);
+
+
+
+      const matchesDepartment =
+
+        filters.department === "all" || project?.department === filters.department;
+
+
+
+      const matchesRisk =
+
+        filters.riskLevel === "all" || project?.risk_level === filters.riskLevel;
+
+
+
+      const matchesStatus =
+
+        filters.status === "all" || project?.status === filters.status;
+
+
+
+      return matchesSearch && matchesDepartment && matchesRisk && matchesStatus;
+
+    });
+
+  }, [projects, filters]);
+
+
+
+  return (
+
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+
+      <div className="max-w-7xl mx-auto">
+
+        <Link to={createPageUrl("Home")}>
+
+          <Button variant="ghost" className="mb-2">
+
+            <ArrowLeft className="w-4 h-4 mr-2" />
+
+            Back to Home
+
+          </Button>
+
+        </Link>
+
+
+
+        <div className="flex justify-between items-center mb-8">
+
+          <div>
+
+            <h1 className="text-4xl font-bold text-slate-900 mb-2">
+
+              Conversion Projects
+
+            </h1>
+
+            <p className="text-slate-600">
+
+              Manage and monitor skill conversion initiatives
+
+            </p>
+
+          </div>
+
+
+
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+
+            <DialogTrigger asChild>
+
+              <Button className="bg-slate-900 hover:bg-slate-800 text-white">
+
+                <Plus className="w-5 h-5 mr-2" />
+
+                New Project
+
+              </Button>
+
+            </DialogTrigger>
+
+
+
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+
+              <DialogHeader>
+
+                <DialogTitle>Create New Project</DialogTitle>
+
+              </DialogHeader>
+
+
+
+              <div className="space-y-4 mt-4">
+
+                <div>
+
+                  <Label>Project Name</Label>
+
+                  <Input
+
+                    value={newProject.project_name}
+
+                    onChange={(e) =>
+
+                      setNewProject({ ...newProject, project_name: e.target.value })
+
+                    }
+
+                    placeholder="e.g., Java to Python Migration"
+
+                  />
+
+                </div>
+
+
+
+                <div className="grid grid-cols-2 gap-4">
+
+                  <div>
+
+                    <Label>Department</Label>
+
+                    <Select
+
+                      value={newProject.department}
+
+                      onValueChange={(value) =>
+
+                        setNewProject({ ...newProject, department: value })
+
+                      }
+
+                    >
+
+                      <SelectTrigger>
+
+                        <SelectValue placeholder="Select department" />
+
+                      </SelectTrigger>
+
+                      <SelectContent>
+
+                        <SelectItem value="Engineering">Engineering</SelectItem>
+
+                        <SelectItem value="Sales">Sales</SelectItem>
+
+                        <SelectItem value="Marketing">Marketing</SelectItem>
+
+                        <SelectItem value="HR">HR</SelectItem>
+
+                        <SelectItem value="Finance">Finance</SelectItem>
+
+                      </SelectContent>
+
+                    </Select>
+
+                  </div>
+
+
+
+                  <div>
+
+                    <Label>Employees Affected</Label>
+
+                    <Input
+
+                      type="number"
+
+                      value={newProject.employees_affected}
+
+                      onChange={(e) =>
+
+                        setNewProject({
+
+                          ...newProject,
+
+                          employees_affected: parseInt(e.target.value, 10) || 0,
+
+                        })
+
+                      }
+
+                    />
+
+                  </div>
+
+                </div>
+
+
+
+                <div className="grid grid-cols-2 gap-4">
+
+                  <div>
+
+                    <Label>Source Skill</Label>
+
+                    <Input
+
+                      value={newProject.source_skill}
+
+                      onChange={(e) =>
+
+                        setNewProject({ ...newProject, source_skill: e.target.value })
+
+                      }
+
+                      placeholder="Current skill"
+
+                    />
+
+                  </div>
+
+
+
+                  <div>
+
+                    <Label>Target Skill</Label>
+
+                    <Input
+
+                      value={newProject.target_skill}
+
+                      onChange={(e) =>
+
+                        setNewProject({ ...newProject, target_skill: e.target.value })
+
+                      }
+
+                      placeholder="Desired skill"
+
+                    />
+
+                  </div>
+
+                </div>
+
+
+
+                <div>
+
+                  <Label>Description</Label>
+
+                  <Textarea
+
+                    value={newProject.description}
+
+                    onChange={(e) =>
+
+                      setNewProject({ ...newProject, description: e.target.value })
+
+                    }
+
+                    placeholder="Project details and objectives"
+
+                    rows={4}
+
+                  />
+
+                </div>
+
+
+
+                <Button
+
+                  onClick={handleCreateProject}
+
+                  className="w-full bg-slate-900 hover:bg-slate-800"
+
+                  disabled={
+
+                    !newProject.project_name ||
+
+                    !newProject.department ||
+
+                    !newProject.source_skill ||
+
+                    !newProject.target_skill ||
+
+                    createProjectMutation.isPending
+
+                  }
+
+                >
+
+                  {createProjectMutation.isPending ? "Creating..." : "Create Project"}
+
+                </Button>
+
+              </div>
+
+            </DialogContent>
+
+          </Dialog>
+
+        </div>
+
+
+
+        <ProjectFilters filters={filters} onFilterChange={setFilters} />
+
+
+
+        {isLoading ? (
+
+          <div className="text-center py-12 text-slate-600">
+
+            Loading projects...
+
+          </div>
+
+        ) : filteredProjects.length === 0 ? (
+
+          <div className="text-center py-12">
+
+            <p className="text-slate-600 mb-4">No projects found</p>
+
+            <p className="text-sm text-slate-500">
+
+              Create your first project to get started
+
+            </p>
+
+          </div>
+
+        ) : (
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+            <AnimatePresence>
+
+              {filteredProjects.map((project) => (
+
+                <ProjectCard key={project.id} project={project} />
+
+              ))}
+
+            </AnimatePresence>
+
+          </div>
+
+        )}
+
+      </div>
+
+    </div>
+
+  );
+
+}
