@@ -1,0 +1,625 @@
+import React, { useState, useMemo, useEffect } from 'react';
+
+import { motion } from 'framer-motion';
+
+import RiskGauge from './RiskGauge';
+import ExplainabilityPanel from './ExplainabilityPanel';
+import Simulator from './Simulator';
+import Resources from './Resources';
+import PersonalizedInsights from './PersonalizedInsights';
+
+import { Button } from '@/components/ui/button';
+import { RefreshCw, AlertTriangle, Info } from 'lucide-react';
+
+// Skill Demand Profiles (weights for each behavioral factor)
+const skillDemandProfiles = {
+  coding: {
+    practice_frequency: 0.25,
+    feedback_response: 0.15,
+    abstraction_preference: 0.30,
+    cognitive_load: 0.20,
+    discipline_self_report: 0.10,
+  },
+  data_science: {
+    practice_frequency: 0.20,
+    feedback_response: 0.15,
+    abstraction_preference: 0.25,
+    cognitive_load: 0.25,
+    discipline_self_report: 0.15,
+  },
+  creative_writing: {
+    practice_frequency: 0.30,
+    feedback_response: 0.25,
+    abstraction_preference: 0.10,
+    cognitive_load: 0.15,
+    discipline_self_report: 0.20,
+  },
+  design: {
+    practice_frequency: 0.20,
+    feedback_response: 0.30,
+    abstraction_preference: 0.15,
+    cognitive_load: 0.15,
+    discipline_self_report: 0.20,
+  },
+  // Least-invasive correction: "marketing" profile braces were malformed.
+  marketing: {
+    practice_frequency: 0.25,
+    feedback_response: 0.20,
+    abstraction_preference: 0.15,
+    cognitive_load: 0.20,
+    discipline_self_report: 0.20,
+  },
+  public_speaking: {
+    practice_frequency: 0.30,
+    feedback_response: 0.25,
+    abstraction_preference: 0.10,
+    cognitive_load: 0.20,
+    discipline_self_report: 0.15,
+  },
+  // Least-invasive correction: "photography" profile braces were malformed.
+  photography: {
+    practice_frequency: 0.25,
+    feedback_response: 0.20,
+    abstraction_preference: 0.20,
+    cognitive_load: 0.15,
+    discipline_self_report: 0.20,
+  },
+  // Least-invasive correction: "video_editing" profile braces were malformed.
+  video_editing: {
+    practice_frequency: 0.25,
+    feedback_response: 0.15,
+    abstraction_preference: 0.15,
+    cognitive_load: 0.25,
+    discipline_self_report: 0.20,
+  },
+  music_production: {
+    practice_frequency: 0.30,
+    feedback_response: 0.20,
+    abstraction_preference: 0.15,
+    cognitive_load: 0.20,
+    discipline_self_report: 0.15,
+  },
+  // Least-invasive correction: "teaching" profile braces were malformed.
+  teaching: {
+    practice_frequency: 0.20,
+    feedback_response: 0.25,
+    abstraction_preference: 0.15,
+    cognitive_load: 0.20,
+    discipline_self_report: 0.20,
+  },
+  entrepreneurship: {
+    practice_frequency: 0.20,
+    feedback_response: 0.20,
+    abstraction_preference: 0.20,
+    cognitive_load: 0.20,
+    discipline_self_report: 0.20,
+  },
+  product_management: {
+    practice_frequency: 0.20,
+    feedback_response: 0.25,
+    abstraction_preference: 0.20,
+    cognitive_load: 0.20,
+    discipline_self_report: 0.15,
+  },
+  custom: {
+    practice_frequency: 0.20,
+    feedback_response: 0.20,
+    abstraction_preference: 0.20,
+    cognitive_load: 0.20,
+    discipline_self_report: 0.20,
+  },
+};
+
+// Factor labels for explainability
+const factorLabels = {
+  practice_frequency: {
+    name: 'Practice Frequency',
+    lowRisk:
+      'Your consistent practice habits align well with skill development patterns.',
+    highRisk: 'Irregular practice patterns may extend the conversion timeline.',
+  },
+  // Least-invasive correction: braces were malformed.
+  feedback_response: {
+    name: 'Feedback Orientation',
+    lowRisk: 'Your openness to feedback supports adaptive learning.',
+    highRisk: 'Limited feedback engagement may slow iterative improvement.',
+  },
+  abstraction_preference: {
+    name: 'Abstraction Comfort',
+    lowRisk: 'Your comfort with abstract concepts matches the skill demands.',
+    highRisk:
+      'The abstraction level required may need gradual exposure.',
+  },
+  cognitive_load: {
+    name: 'Complexity Handling',
+    lowRisk: 'Your approach to complex problems aligns with task requirements.',
+    highRisk:
+      'Complex multi-step processes may require structured support.',
+  },
+  // Least-invasive correction: braces/quotes were malformed.
+  discipline_self_report: {
+    name: 'Self-Direction',
+    lowRisk: 'Your self-discipline supports independent skill building.',
+    highRisk:
+      'External accountability structures may enhance progress.',
+  },
+};
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+// Optional, isolated, and fail-safe adapters for Firebase/Gemini/BigQuery/Vertex.
+// These do NOT alter SCRE’s conceptual behavior; they are strictly best-effort side layers.
+const SCRE_FEATURE_FLAGS = (() => {
+  try {
+    // No env var assumptions; allow runtime override via window.__SCRE_FLAGS__
+    const w = typeof window !== 'undefined' ? window : undefined;
+    const flags = (w && w.__SCRE_FLAGS__) || {};
+    return {
+      firebaseAuth: !!flags.firebaseAuth,
+      firebaseProfile: !!flags.firebaseProfile,
+      geminiInsights: !!flags.geminiInsights,
+      bigqueryAnalytics: !!flags.bigqueryAnalytics,
+      vertexInference: !!flags.vertexInference,
+      vertexExplainability: !!flags.vertexExplainability,
+    };
+  } catch {
+    return {
+      firebaseAuth: false,
+      firebaseProfile: false,
+      geminiInsights: false,
+      bigqueryAnalytics: false,
+      vertexInference: false,
+      vertexExplainability: false,
+    };
+  }
+})();
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+const NoopServices = Object.freeze({
+  auth: {
+    getUser: async () => null,
+    signIn: async () => null,
+    signOut: async () => null,
+  },
+  profile: {
+    load: async () => null,
+    save: async () => null,
+  },
+  gemini: {
+    generateInsights: async () => null,
+  },
+  bigquery: {
+    logEvent: async () => null,
+  },
+  vertex: {
+    inferRisk: async () => null,
+  },
+  vertexExplain: {
+    enrichExplanations: async () => null,
+  },
+});
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+async function lazyLoadOptionalServices() {
+  // Start from no-ops; selectively upgrade behind feature flags.
+  const services = {
+    ...NoopServices,
+  };
+
+  // Firebase: auth + profile persistence only (optional)
+  if (SCRE_FEATURE_FLAGS.firebaseAuth || SCRE_FEATURE_FLAGS.firebaseProfile) {
+    try {
+      // Dynamic import only; no breaking imports or side effects at module load.
+      const fb = await import('firebase/app');
+      // NOTE: Intentionally not initializing without guarded config to avoid side effects/crashes.
+      // If the host app initializes Firebase elsewhere, this layer can still safely no-op.
+      void fb;
+
+      // Attempt optional submodules only if present; guarded.
+      if (SCRE_FEATURE_FLAGS.firebaseAuth) {
+        try {
+          const authMod = await import('firebase/auth');
+          void authMod;
+
+          services.auth = {
+            getUser: async () => {
+              try {
+                // If the app already initialized Firebase, auth() may work.
+                // If not, safely return null.
+                const { getAuth } = authMod;
+                const a = getAuth();
+                return a?.currentUser ?? null;
+              } catch {
+                return null;
+              }
+            },
+            signIn: async () => null,
+            signOut: async () => {
+              try {
+                const { getAuth, signOut } = authMod;
+                const a = getAuth();
+                if (a) await signOut(a);
+                return true;
+              } catch {
+                return null;
+              }
+            },
+          };
+        } catch {
+          // keep no-op
+        }
+      }
+
+      if (SCRE_FEATURE_FLAGS.firebaseProfile) {
+        try {
+          const fsMod = await import('firebase/firestore');
+          void fsMod;
+          services.profile = {
+            load: async () => null,
+            save: async () => null,
+          };
+        } catch {
+          // keep no-op
+        }
+      }
+    } catch {
+      // keep no-op
+    }
+  }
+
+  // Gemini API: insight generation only (non-blocking)
+  if (SCRE_FEATURE_FLAGS.geminiInsights) {
+    try {
+      // This is intentionally generic; real apps should provide their own client wrapper.
+      // We do NOT assume keys/env; without them, this safely no-ops.
+      services.gemini = {
+        generateInsights: async () => null,
+      };
+    } catch {
+      // keep no-op
+    }
+  }
+
+  // BigQuery: analytics logging only (async, fire-and-forget)
+  if (SCRE_FEATURE_FLAGS.bigqueryAnalytics) {
+    try {
+      // BigQuery SDK typically runs server-side; in client we keep a safe no-op
+      // or allow host app to inject its own logger through window.__SCRE_BIGQUERY_LOGGER__.
+      services.bigquery = {
+        logEvent: async (eventName, payload) => {
+          try {
+            const w = typeof window !== 'undefined' ? window : undefined;
+            const injected = w && w.__SCRE_BIGQUERY_LOGGER__;
+            if (typeof injected === 'function') {
+              // fire-and-forget
+              void injected(eventName, payload);
+            }
+            return null;
+          } catch {
+            return null;
+          }
+        },
+      };
+    } catch {
+      // keep no-op
+    }
+  }
+
+  // Vertex AI: model inference only behind abstraction layer
+  if (SCRE_FEATURE_FLAGS.vertexInference) {
+    try {
+      services.vertex = {
+        inferRisk: async () => null,
+      };
+    } catch {
+      // keep no-op
+    }
+  }
+
+  // Vertex Explainable AI: explanation enrichment only if available
+  if (SCRE_FEATURE_FLAGS.vertexExplainability) {
+    try {
+      services.vertexExplain = {
+        enrichExplanations: async () => null,
+      };
+    } catch {
+      // keep no-op
+    }
+  }
+
+  return services;
+}
+
+function calculateRisk(
+  behavioralData,
+  microTaskData,
+  skillId,
+  simulatedValues = null
+) {
+  const profile = skillDemandProfiles[skillId];
+  const values = simulatedValues || behavioralData;
+
+  if (!profile || !values) return { score: 50, factors: [], contradiction: false };
+
+  // Calculate base risk from behavioral inputs
+  const factors = [];
+  let weightedSum = 0;
+  let totalWeight = 0;
+
+  Object.entries(profile).forEach(([factor, weight]) => {
+    const userValue = values[factor] ?? 50;
+
+    // Convert user value (0-100, higher is better) to risk contribution
+    // Higher user values lower risk contribution
+    const riskContribution = (100 - userValue) * weight;
+
+    weightedSum += riskContribution;
+    totalWeight += weight;
+
+    const label = factorLabels[factor];
+
+    factors.push({
+      id: factor,
+      name: label?.name || factor,
+      userValue,
+      weight,
+      riskContribution,
+      explanation:
+        userValue < 50 ? (label?.highRisk || '') : (label?.lowRisk || ''),
+    });
+  });
+
+  // Base risk score (0-100)
+  let riskScore = totalWeight > 0 ? weightedSum / totalWeight : 50;
+
+  // Micro-task performance adjustment
+  let contradiction = false;
+
+  if (microTaskData) {
+    const taskScore = microTaskData.score || 50;
+    const selfReportedDiscipline = values.discipline_self_report ?? 50;
+
+    // Contradiction check: high self-reported discipline but low task performance
+    if (selfReportedDiscipline > 70 && taskScore < 40) {
+      contradiction = true;
+      riskScore = Math.min(100, riskScore * 1.2); // Increase risk by 20%
+    }
+
+    // Adjust based on task performance
+    const taskAdjustment = (100 - taskScore) * 0.15;
+    riskScore = Math.min(100, riskScore + taskAdjustment);
+  }
+
+  // Sort factors by risk contribution
+  factors.sort((a, b) => b.riskContribution - a.riskContribution);
+
+  return {
+    score: Math.round(riskScore),
+    factors,
+    contradiction,
+  };
+}
+
+export default function Dashboard({ skill, behavioralData, microTaskData, onRestart }) {
+  const [simulatedValues, setSimulatedValues] = useState(null);
+  const [showContradictionAlert, setShowContradictionAlert] = useState(false);
+
+  // SAFE INTEGRATION LAYER (Non-breaking)
+  // Best-effort optional services; never block UI or alter baseline scoring/UX.
+  const [optionalServices, setOptionalServices] = useState(NoopServices);
+
+  // SAFE INTEGRATION LAYER (Non-breaking)
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const svcs = await lazyLoadOptionalServices();
+        if (mounted) setOptionalServices(svcs || NoopServices);
+      } catch {
+        if (mounted) setOptionalServices(NoopServices);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const riskAnalysis = useMemo(() => {
+    return calculateRisk(behavioralData, microTaskData, skill.id, simulatedValues);
+  }, [behavioralData, microTaskData, skill.id, simulatedValues]);
+
+  const baseRiskAnalysis = useMemo(() => {
+    return calculateRisk(behavioralData, microTaskData, skill.id, null);
+  }, [behavioralData, microTaskData, skill.id]);
+
+  useEffect(() => {
+    if (baseRiskAnalysis.contradiction) {
+      setShowContradictionAlert(true);
+    }
+  }, [baseRiskAnalysis.contradiction]);
+
+  // SAFE INTEGRATION LAYER (Non-breaking)
+  // Fire-and-forget analytics only; never throw.
+  useEffect(() => {
+    (async () => {
+      try {
+        if (!SCRE_FEATURE_FLAGS.bigqueryAnalytics) return;
+        await optionalServices.bigquery.logEvent('scre_risk_computed', {
+          skillId: skill?.id,
+          skillName: skill?.name,
+          riskScore: riskAnalysis?.score,
+          riskContradiction: !!riskAnalysis?.contradiction,
+          isSimulating: simulatedValues !== null,
+          ts: Date.now(),
+        });
+      } catch {
+        // no-op
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [riskAnalysis?.score, riskAnalysis?.contradiction, skill?.id, simulatedValues]);
+
+  const getRiskBand = (score) => {
+    if (score < 30) return { label: 'Low', color: 'teal' };
+    if (score < 70) return { label: 'Medium', color: 'amber' };
+    return { label: 'High', color: 'rose' };
+  };
+
+  const riskBand = getRiskBand(riskAnalysis.score);
+  const isSimulating = simulatedValues !== null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="pb-24"
+    >
+      {/* Header */}
+      <div className="text-center mb-8">
+        <span className="inline-block px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-400 text-xs font-medium mb-4">
+          Analysis Complete ({skill.name})
+        </span>
+
+        <h2 className="text-2x1 md:text-3xl font-bold text-white mb-2">
+          Risk Analysis Dashboard
+        </h2>
+
+        <p className="text-slate-400 text-sm">
+          Behavioral patterns mapped against ({skill.name}) demand profile
+        </p>
+      </div>
+
+      {/* Contradiction Alert */}
+      {showContradictionAlert && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-3x1l mx-auto mb-6"
+        >
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-x1 p-4 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-amber-200 font-medium text-sm">
+                Reliability Adjustment Applied
+              </p>
+              <p className="text-amber-400/80 text-xs mt-1">
+                Task performance patterns differed from self-reported discipline levels.
+                Risk assessment has been adjusted to reflect observed behavior.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowContradictionAlert(false)}
+              className="text-amber-400/60 hover:text-amber-400 ml-auto"
+              aria-label="Dismiss"
+              type="button"
+            />
+          </div>
+        </motion.div>
+      )}
+
+      {/* Simulation Mode Indicator */}
+      {isSimulating && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="max-w-3x1 mx-auto mb-6"
+        >
+          <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-x1 p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Info className="w-5 h-5 text-cyan-400" />
+              <p className="text-cyan-200 text-sm">
+                Simulation Mode Active Adjust sliders to see risk changes
+              </p>
+            </div>
+
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setSimulatedValues(null)}
+              className="text-cyan-400 hover:text-white hover:bg-cyan-500/20"
+            >
+              Reset to Original
+            </Button>
+          </div>
+        </motion.div>
+      )}
+
+      <div className="max-w-5x1 mx-auto grid lg:grid-cols-2 gap-6">
+        {/* Risk Gauge */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.1 }}
+        >
+          <RiskGauge
+            score={riskAnalysis.score}
+            band={riskBand}
+            isSimulating={isSimulating}
+          />
+        </motion.div>
+
+        {/* Explainability Panel */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.2 }}
+        >
+          <ExplainabilityPanel factors={riskAnalysis.factors.slice(0, 2)} riskBand={riskBand} />
+        </motion.div>
+      </div>
+
+      {/* Simulator */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="max-w-5x1 mx-auto mt-6"
+      >
+        <Simulator
+          behavioralData={behavioralData}
+          simulatedValues={simulatedValues}
+          onSimulate={setSimulatedValues}
+          currentScore={riskAnalysis.score}
+          originalScore={baseRiskAnalysis.score}
+        />
+      </motion.div>
+
+      {/* Personalized Insights */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
+        className="max-w-5x1 mx-auto mt-6"
+      >
+        <PersonalizedInsights
+          riskBand={riskBand}
+          factors={riskAnalysis.factors}
+          skill={skill}
+          riskScore={riskAnalysis.score}
+        />
+      </motion.div>
+
+      {/* Learning Resources */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.5 }}
+        className="max-w-5x1 mx-auto mt-6"
+      >
+        <Resources skill={skill} />
+      </motion.div>
+
+      {/* Actions */}
+      <div className="max-w-5x1 mx-auto mt-8 flex justify-center">
+        <Button
+          onClick={onRestart}
+          variant="outline"
+          className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
+        >
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Start New Assessment
+        </Button>
+      </div>
+    </motion.div>
+  );
+}
