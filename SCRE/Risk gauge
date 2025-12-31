@@ -1,0 +1,367 @@
+import React from 'react';
+
+import { motion } from 'framer-motion';
+
+
+
+export default function RiskGauge({ score, band, isSimulating }) {
+
+  // SAFE INTEGRATION LAYER (Non-breaking)
+
+  // Guard against undefined / non-numeric score so the UI never crashes.
+
+  const safeScore =
+
+    typeof score === 'number' && Number.isFinite(score) ? score : 0;
+
+  const clampedScore = Math.max(0, Math.min(100, safeScore));
+
+
+
+  // Calculate rotation for the needle (-90 to 90 degrees)
+
+  const needleRotation = -90 + (clampedScore / 100) * 180;
+
+
+
+  const bandColors = {
+
+    teal: {
+
+      bg: 'bg-teal-500/20',
+
+      border: 'border-teal-500/30',
+
+      text: 'text-teal-400',
+
+      glow: 'shadow-teal-500/30',
+
+    },
+
+    amber: {
+
+      bg: 'bg-amber-500/20',
+
+      border: 'border-amber-500/30',
+
+      text: 'text-amber-400',
+
+      glow: 'shadow-amber-500/30',
+
+    },
+
+    rose: {
+
+      bg: 'bg-rose-500/20',
+
+      border: 'border-rose-500/30',
+
+      text: 'text-rose-400',
+
+      glow: 'shadow-rose-500/30',
+
+    },
+
+  };
+
+
+
+  // SAFE INTEGRATION LAYER (Non-breaking)
+
+  // Guard band/band.color so styling never crashes; default is neutral teal.
+
+  const safeBand = band || { color: 'teal', label: '' };
+
+  const colors = bandColors?.[safeBand?.color] ?? bandColors.teal;
+
+
+
+  return (
+
+    <div className="bg-gradient-to-br from-slate-900/90 to-slate-900/70 border border-slate-800/60 rounded-3xl p-8 relative overflow-hidden">
+
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-500/20 to-transparent" />
+
+
+
+      <div className="flex items-center justify-between mb-8 relative z-10">
+
+        <h3 className="text-xl font-bold text-white">Risk Condition</h3>
+
+
+
+        {isSimulating && (
+
+          <span className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500/20 to-teal-500/20 text-cyan-300 border border-cyan-500/20 text-xs font-medium">
+
+            Simulated
+
+          </span>
+
+        )}
+
+      </div>
+
+
+
+      {/* Gauge Container */}
+
+      <div className="relative flex flex-col items-center">
+
+        {/* Semi-circular Gauge */}
+
+        <svg viewBox="0 0 200 120" className="w-full max-w-[280px]">
+
+          {/* Background Arc */}
+
+          <path
+
+            d="M 20 100 A 80 80 0 0 1 180 100"
+
+            fill="none"
+
+            stroke="rgb(51 65 85)"
+
+            strokeWidth="12"
+
+            strokeLinecap="round"
+
+          />
+
+
+
+          {/* Low Risk Zone */}
+
+          <path
+
+            d="M 20 100 A 80 80 0 0 1 60 35"
+
+            fill="none"
+
+            stroke="rgb(20 184 166)"
+
+            strokeWidth="12"
+
+            strokeLinecap="round"
+
+            opacity="0.6"
+
+          />
+
+
+
+          {/* Medium Risk Zone */}
+
+          <path
+
+            d="M 60 35 A 80 80 0 0 1 140 35"
+
+            fill="none"
+
+            stroke="rgb(245 158 11)"
+
+            strokeWidth="12"
+
+            opacity="0.6"
+
+          />
+
+
+
+          {/* High Risk Zone */}
+
+          <path
+
+            d="M 140 35 A 80 80 0 0 1 180 100"
+
+            fill="none"
+
+            stroke="rgb(244 63 94)"
+
+            strokeWidth="12"
+
+            strokeLinecap="round"
+
+            opacity="0.6"
+
+          />
+
+
+
+          {/* Needle */}
+
+          <motion.g
+
+            initial={{ rotate: -90 }}
+
+            animate={{ rotate: needleRotation }}
+
+            transition={{ type: 'spring', stiffness: 60, damping: 15 }}
+
+            style={{ transformOrigin: '100px 100px' }}
+
+          >
+
+            <line
+
+              x1="100"
+
+              y1="100"
+
+              x2="100"
+
+              y2="30"
+
+              stroke="white"
+
+              strokeWidth="3"
+
+              strokeLinecap="round"
+
+            />
+
+
+
+            <circle cx="100" cy="100" r="8" fill="white" />
+
+            <circle cx="100" cy="100" r="4" fill="rgb(15 23 42)" />
+
+          </motion.g>
+
+
+
+          {/* Labels */}
+
+          <text
+
+            x="15"
+
+            y="115"
+
+            fill="rgb(148 163 184)"
+
+            fontSize="10"
+
+            fontWeight="500"
+
+          >
+
+            Low
+
+          </text>
+
+
+
+          <text
+
+            x="90"
+
+            y="20"
+
+            fill="rgb(148 163 184)"
+
+            fontSize="10"
+
+            fontWeight="500"
+
+          >
+
+            Med
+
+          </text>
+
+
+
+          <text
+
+            x="165"
+
+            y="115"
+
+            fill="rgb(148 163 184)"
+
+            fontSize="10"
+
+            fontWeight="500"
+
+          >
+
+            High
+
+          </text>
+
+        </svg>
+
+
+
+        {/* Risk Band Label Primary Display */}
+
+        <motion.div
+
+          key={safeBand.label}
+
+          initial={{ y: 10, opacity: 0, scale: 0.9 }}
+
+          animate={{ y: 0, opacity: 1, scale: 1 }}
+
+          transition={{ type: 'spring', stiffness: 200 }}
+
+          className={`mt-6 px-8 py-3 rounded-2xl ${colors.bg} ${colors.border} border-2 shadow-2xl ${colors.glow}`}
+
+        >
+
+          <span className={`font-bold text-xl ${colors.text}`}>
+
+            {safeBand.label} Risk Condition
+
+          </span>
+
+        </motion.div>
+
+
+
+        <p className="text-slate-400 text-xs mt-2">Based on behavioral patterns</p>
+
+      </div>
+
+
+
+      {/* Risk Bands Legend */}
+
+      <div className="mt-8 grid grid-cols-3 gap-2">
+
+        <div className="text-center">
+
+          <div className="w-3 h-3 rounded-full bg-teal-500 mx-auto mb-1" />
+
+          <span className="text-xs text-slate-500">Low</span>
+
+        </div>
+
+
+
+        <div className="text-center">
+
+          <div className="w-3 h-3 rounded-full bg-amber-500 mx-auto mb-1" />
+
+          <span className="text-xs text-slate-500">Medium</span>
+
+        </div>
+
+
+
+        <div className="text-center">
+
+          <div className="w-3 h-3 rounded-full bg-rose-500 mx-auto mb-1" />
+
+          <span className="text-xs text-slate-500">High</span>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  );
+
+}
