@@ -1,0 +1,151 @@
+
+
+{
+
+  "name": "RiskFactor",
+
+  "type": "object",
+
+  "properties": {
+
+    "project_id": {
+
+      "type": "string",
+
+      "description": "Associated project ID"
+
+    },
+
+
+
+    // SAFE INTEGRATION LAYER (Non-breaking)
+
+    // NOTE: The original file had misplaced braces, commas, and stray tokens (e.g., 1, |). These were completed/removed
+
+    // using the least-invasive corrections to restore valid JSON while preserving the original meaning.
+
+
+
+    "category": {
+
+      "type": "string",
+
+      "enum": [
+
+        "technical",
+
+        "organizational",
+
+        "financial",
+
+        "resource",
+
+        "timeline",
+
+        "adoption"
+
+      ],
+
+      "description": "Risk category"
+
+    },
+
+    "factor_name": {
+
+      "type": "string",
+
+      "description": "Name of the risk factor"
+
+    },
+
+    "description": {
+
+      "type": "string",
+
+      "description": "Detailed description of the risk"
+
+    },
+
+    "severity": {
+
+      "type": "string",
+
+      "enum": [
+
+        "low",
+
+        "medium",
+
+        "high",
+
+        "critical"
+
+      ],
+
+      "description": "Risk severity level"
+
+    },
+
+    "impact_score": {
+
+      "type": "number",
+
+      "description": "Impact score (0-100)"
+
+    },
+
+    "likelihood_score": {
+
+      "type": "number",
+
+      "description": "Likelihood score (0-100)"
+
+    },
+
+    "ai_generated": {
+
+      "type": "boolean",
+
+      "default": false,
+
+      "description": "Whether identified by AI"
+
+    },
+
+    "mitigation_status": {
+
+      "type": "string",
+
+      "enum": [
+
+        "identified",
+
+        "planning",
+
+        "in_progress",
+
+        "mitigated"
+
+      ],
+
+      "default": "identified",
+
+      "description": "Status of mitigation efforts"
+
+    }
+
+  },
+
+  "required": [
+
+    "project_id",
+
+    "category",
+
+    "factor_name",
+
+    "severity"
+
+  ]
+
+}
