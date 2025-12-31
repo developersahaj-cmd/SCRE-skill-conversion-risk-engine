@@ -1,0 +1,444 @@
+
+{
+
+  "name": "UserProfile",
+
+  "type": "object",
+
+  "properties": {
+
+    "user_email": {
+
+      "type": "string",
+
+      "description": "Associated user email"
+
+    },
+
+    "department": {
+
+      "type": "string",
+
+      "description": "User's department"
+
+    },
+
+    "job_title": {
+
+      "type": "string",
+
+      "description": "User's job title"
+
+    },
+
+    "phone": {
+
+      "type": "string",
+
+      "description": "Contact phone number"
+
+    },
+
+    "location": {
+
+      "type": "string",
+
+      "description": "Office location"
+
+    },
+
+    "bio": {
+
+      "type": "string",
+
+      "description": "Professional bio"
+
+    },
+
+    "skills": {
+
+      "type": "array",
+
+      "items": {
+
+        "type": "string"
+
+      },
+
+      "description": "User's skills"
+
+    },
+
+    "avatar_url": {
+
+      "type": "string",
+
+      "description": "Profile picture URL"
+
+    },
+
+    "notification_preferences": {
+
+      "type": "object",
+
+      "properties": {
+
+        "email_notifications": {
+
+          "type": "boolean",
+
+          "default": true
+
+        },
+
+        "high_risk_alerts": {
+
+          "type": "boolean",
+
+          "default": true
+
+        },
+
+        "weekly_reports": {
+
+          "type": "boolean",
+
+          "default": false
+
+        }
+
+      }
+
+    }
+
+  },
+
+  "required": ["user_email"]
+
+}
+
+2) OPTIONAL SAFE Integration Adapters (Fail-safe)
+
+The following adapters are additive and OPTIONAL. They are designed to never crash the application if services are unavailable.
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+// Feature flags are intentionally optional and default to disabled.
+
+export const SCRE_FEATURE_FLAGS = {
+
+  firebaseAuth: false,
+
+  geminiInsights: false,
+
+  bigQueryAnalytics: false,
+
+  vertexInference: false,
+
+  vertexExplainability: false,
+
+} as const;
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+// Minimal runtime-safe flag reader; never assumes env vars exist.
+
+export function getFlag<K extends keyof typeof SCRE_FEATURE_FLAGS>(key: K): boolean {
+
+  try {
+
+    // If your app already has a flag system, you can map into it here (optional).
+
+    const v = (globalThis as any)?.SCRE_FLAGS?.[key];
+
+    return typeof v === "boolean" ? v : SCRE_FEATURE_FLAGS[key];
+
+  } catch {
+
+    return SCRE_FEATURE_FLAGS[key];
+
+  }
+
+}
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+// Firebase: auth + user profile persistence ONLY, fully optional and lazy-loaded.
+
+export type FirebaseAuthAdapter = {
+
+  signInWithEmailLink?: (email: string, link: string) => Promise<void>;
+
+  getUserProfile?: (email: string) => Promise<unknown | null>;
+
+  upsertUserProfile?: (email: string, profile: unknown) => Promise<void>;
+
+};
+
+
+
+export async function getFirebaseAuthAdapter(): Promise<FirebaseAuthAdapter> {
+
+  if (!getFlag("firebaseAuth")) return {}; // no-op
+
+  try {
+
+    // Lazy import - avoid breaking builds if firebase isn't installed.
+
+    const fb = await import("firebase/app").catch(() => null);
+
+    if (!fb) return {};
+
+    // IMPORTANT: Do not initialize firebase here unless your app already does it.
+
+    // Use existing initialization if present; otherwise stay no-op.
+
+    return {
+
+      // Implementations intentionally empty until wired to existing app init.
+
+      // Keep as no-op to preserve backward compatibility.
+
+    };
+
+  } catch {
+
+    return {};
+
+  }
+
+}
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+// Gemini: insight generation ONLY, non-blocking.
+
+export type GeminiAdapter = {
+
+  generateInsights?: (input: { prompt: string; context?: unknown }) => Promise<string | null>;
+
+};
+
+
+
+export async function getGeminiAdapter(): Promise<GeminiAdapter> {
+
+  if (!getFlag("geminiInsights")) return {}; // no-op
+
+  try {
+
+    // Lazy import placeholder. Replace with your Gemini client module if present.
+
+    const mod = await import("./geminiClient").catch(() => null);
+
+    if (!mod?.generateInsights) return {};
+
+    return {
+
+      generateInsights: async (input) => {
+
+        try {
+
+          return await mod.generateInsights(input);
+
+        } catch {
+
+          return null;
+
+        }
+
+      },
+
+    };
+
+  } catch {
+
+    return {};
+
+  }
+
+}
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+// BigQuery: analytics logging ONLY (async, fire-and-forget).
+
+export type BigQueryAdapter = {
+
+  logEvent?: (event: { name: string; payload?: unknown; ts?: number }) => void;
+
+};
+
+
+
+export async function getBigQueryAdapter(): Promise<BigQueryAdapter> {
+
+  if (!getFlag("bigQueryAnalytics")) return {}; // no-op
+
+  try {
+
+    const mod = await import("./bigqueryClient").catch(() => null);
+
+    if (!mod?.logEvent) return {};
+
+    return {
+
+      logEvent: (event) => {
+
+        try {
+
+          // Fire-and-forget; must never throw.
+
+          void mod.logEvent({ ...event, ts: event.ts ?? Date.now() });
+
+        } catch {
+
+          // swallow
+
+        }
+
+      },
+
+    };
+
+  } catch {
+
+    return {};
+
+  }
+
+}
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+// Vertex AI: model inference ONLY, behind abstraction layer.
+
+export type VertexInferenceAdapter = {
+
+  inferRisk?: (input: unknown) => Promise<unknown | null>;
+
+};
+
+
+
+export async function getVertexInferenceAdapter(): Promise<VertexInferenceAdapter> {
+
+  if (!getFlag("vertexInference")) return {}; // no-op
+
+  try {
+
+    const mod = await import("./vertexClient").catch(() => null);
+
+    if (!mod?.inferRisk) return {};
+
+    return {
+
+      inferRisk: async (input) => {
+
+        try {
+
+          return await mod.inferRisk(input);
+
+        } catch {
+
+          return null;
+
+        }
+
+      },
+
+    };
+
+  } catch {
+
+    return {};
+
+  }
+
+}
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+// Vertex Explainable AI: explanation enrichment ONLY if available.
+
+export type VertexExplainabilityAdapter = {
+
+  enrichExplanation?: (input: { rawExplanation: unknown; context?: unknown }) => Promise<unknown | null>;
+
+};
+
+
+
+export async function getVertexExplainabilityAdapter(): Promise<VertexExplainabilityAdapter> {
+
+  if (!getFlag("vertexExplainability")) return {}; // no-op
+
+  try {
+
+    const mod = await import("./vertexExplainClient").catch(() => null);
+
+    if (!mod?.enrichExplanation) return {};
+
+    return {
+
+      enrichExplanation: async (input) => {
+
+        try {
+
+          return await mod.enrichExplanation(input);
+
+        } catch {
+
+          return null;
+
+        }
+
+      },
+
+    };
+
+  } catch {
+
+    return {};
+
+  }
+
+}
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+// Utility: wrap any optional adapter call so it never blocks or crashes core UX.
+
+export async function safeOptional<T>(fn: (() => Promise<T>) | undefined, fallback: T): Promise<T> {
+
+  if (!fn) return fallback;
+
+  try {
+
+    return await fn();
+
+  } catch {
+
+    return fallback;
+
+  }
+
+}
+
+3) Behavioral Neutrality + Conceptual Integrity Notes
+
+These adapters are explicitly non-prescriptive. They must not alter SCRE’s meaning of Skill Conversion Risk or turn outputs into advice. If any external service is missing, outputs must degrade to empty/null/no-op without affecting core behavior.
