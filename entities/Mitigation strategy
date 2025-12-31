@@ -1,0 +1,613 @@
+
+
+{
+
+  "name": "MitigationStrategy",
+
+  "type": "object",
+
+  "properties": {
+
+    "risk_factor_id": {
+
+      "type": "string",
+
+      "description": "Associated risk factor ID"
+
+    },
+
+    "project_id": {
+
+      "type": "string",
+
+      "description": "Associated project ID"
+
+    },
+
+    "strategy_name": {
+
+      "type": "string",
+
+      "description": "Name of the mitigation strategy"
+
+    },
+
+    "description": {
+
+      "type": "string",
+
+      "description": "Detailed strategy description"
+
+    },
+
+    "estimated_cost": {
+
+      "type": "number",
+
+      "description": "Estimated implementation cost"
+
+    },
+
+    "estimated_time": {
+
+      "type": "string",
+
+      "description": "Estimated time to implement"
+
+    },
+
+    "effectiveness_score": {
+
+      "type": "number",
+
+      "description": "Expected effectiveness (0-100)"
+
+    },
+
+    "priority": {
+
+      "type": "string",
+
+      "enum": ["low", "medium", "high", "urgent"],
+
+      "default": "medium",
+
+      "description": "Implementation priority"
+
+    },
+
+    "status": {
+
+      "type": "string",
+
+      "enum": ["suggested", "approved", "in_progress", "completed", "rejected"],
+
+      "default": "suggested",
+
+      "description": "Strategy status"
+
+    },
+
+    "ai_generated": {
+
+      "type": "boolean",
+
+      "default": false,
+
+      "description": "Whether suggested by AI"
+
+    }
+
+  },
+
+  "required": ["project_id", "strategy_name", "description"]
+
+}
+
+2) Optional adapters for Google/Firebase integrations (drop-in utility)
+
+Optional, isolated, and fail-safe adapters (feature-flagged, lazy-loaded, try/catch, no-op fallbacks). These do not change SCRE’s conceptual behavior; they only provide optional integration hooks.
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+/**
+
+ * Optional, isolated adapters for Google + Firebase services.
+
+ * - Lazy loaded (dynamic import)
+
+ * - Wrapped in try/catch
+
+ * - Feature-flagged
+
+ * - No-op fallbacks
+
+ *
+
+ * NOTE: Drop-in utility; it does not alter existing SCRE logic.
+
+ *       Existing callers can optionally use these adapters.
+
+ */
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+export type FeatureFlags = {
+
+  firebaseAuth?: boolean;          // Firebase -> auth + profile persistence only (optional)
+
+  geminiInsights?: boolean;        // Gemini -> insight generation only (non-blocking)
+
+  bigQueryAnalytics?: boolean;     // BigQuery -> analytics logging only (async, fire-and-forget)
+
+  vertexInference?: boolean;       // Vertex AI -> model inference only behind abstraction layer
+
+  vertexExplainability?: boolean;  // Vertex Explainable AI -> explanation enrichment only if available
+
+};
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+const DEFAULT_FLAGS: Required<FeatureFlags> = {
+
+  firebaseAuth: false,
+
+  geminiInsights: false,
+
+  bigQueryAnalytics: false,
+
+  vertexInference: false,
+
+  vertexExplainability: false,
+
+};
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+function getEnv(key: string): string | undefined {
+
+  try {
+
+    const nodeEnv = (globalThis as any)?.process?.env?.[key];
+
+    if (typeof nodeEnv === "string" && nodeEnv.length > 0) return nodeEnv;
+
+
+
+    const viteEnv = (globalThis as any)?.import?.meta?.env?.[key];
+
+    if (typeof viteEnv === "string" && viteEnv.length > 0) return viteEnv;
+
+
+
+    return undefined;
+
+  } catch {
+
+    return undefined;
+
+  }
+
+}
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+function resolveFlags(flags?: FeatureFlags): Required<FeatureFlags> {
+
+  return { ...DEFAULT_FLAGS, ...(flags || {}) };
+
+}
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+export type FirebaseAuthAdapter = {
+
+  getUid: () => Promise<string | null>;
+
+  upsertUserProfile: (uid: string, profile: Record<string, any>) => Promise<void>;
+
+};
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+export async function getFirebaseAuthAdapter(
+
+  flags?: FeatureFlags
+
+): Promise<FirebaseAuthAdapter> {
+
+  const f = resolveFlags(flags);
+
+
+
+  const noop: FirebaseAuthAdapter = {
+
+    getUid: async () => null,
+
+    upsertUserProfile: async () => undefined,
+
+  };
+
+
+
+  if (!f.firebaseAuth) return noop;
+
+
+
+  try {
+
+    const firebaseApp = await import("firebase/app");
+
+    const firebaseAuth = await import("firebase/auth");
+
+    const firebaseFirestore = await import("firebase/firestore");
+
+
+
+    const apiKey = getEnv("FIREBASE_API_KEY");
+
+    const authDomain = getEnv("FIREBASE_AUTH_DOMAIN");
+
+    const projectId = getEnv("FIREBASE_PROJECT_ID");
+
+
+
+    if (!apiKey || !authDomain || !projectId) return noop;
+
+
+
+    const app = firebaseApp.initializeApp({ apiKey, authDomain, projectId });
+
+    const auth = firebaseAuth.getAuth(app);
+
+    const db = firebaseFirestore.getFirestore(app);
+
+
+
+    return {
+
+      getUid: async () => {
+
+        try {
+
+          return auth.currentUser?.uid ?? null;
+
+        } catch {
+
+          return null;
+
+        }
+
+      },
+
+      upsertUserProfile: async (uid, profile) => {
+
+        try {
+
+          const ref = firebaseFirestore.doc(db, "users", uid);
+
+          await firebaseFirestore.setDoc(ref, profile, { merge: true });
+
+        } catch {
+
+          // swallow — fail-safe
+
+        }
+
+      },
+
+    };
+
+  } catch {
+
+    return noop;
+
+  }
+
+}
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+export type GeminiInsightsAdapter = {
+
+  generateInsight: (prompt: string) => Promise<string>;
+
+};
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+export async function getGeminiInsightsAdapter(
+
+  flags?: FeatureFlags
+
+): Promise<GeminiInsightsAdapter> {
+
+  const f = resolveFlags(flags);
+
+
+
+  const noop: GeminiInsightsAdapter = {
+
+    generateInsight: async () => "",
+
+  };
+
+
+
+  if (!f.geminiInsights) return noop;
+
+
+
+  try {
+
+    const apiKey = getEnv("GEMINI_API_KEY");
+
+    if (!apiKey) return noop;
+
+
+
+    return {
+
+      generateInsight: async (prompt: string) => {
+
+        try {
+
+          void prompt;
+
+          // Replace with your Gemini call (kept optional).
+
+          return "";
+
+        } catch {
+
+          return "";
+
+        }
+
+      },
+
+    };
+
+  } catch {
+
+    return noop;
+
+  }
+
+}
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+export type BigQueryLogger = {
+
+  logEvent: (eventName: string, payload?: Record<string, any>) => void;
+
+};
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+export function getBigQueryLogger(flags?: FeatureFlags): BigQueryLogger {
+
+  const f = resolveFlags(flags);
+
+
+
+  const noop: BigQueryLogger = {
+
+    logEvent: () => undefined,
+
+  };
+
+
+
+  if (!f.bigQueryAnalytics) return noop;
+
+
+
+  return {
+
+    logEvent: (eventName, payload) => {
+
+      try {
+
+        void (async () => {
+
+          try {
+
+            void eventName;
+
+            void payload;
+
+            // Replace with your BigQuery ingestion endpoint / client.
+
+          } catch {
+
+            // swallow
+
+          }
+
+        })();
+
+      } catch {
+
+        // swallow
+
+      }
+
+    },
+
+  };
+
+}
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+export type VertexInferenceAdapter<Input = any, Output = any> = {
+
+  infer: (input: Input) => Promise<Output | null>;
+
+};
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+export async function getVertexInferenceAdapter<Input = any, Output = any>(
+
+  flags?: FeatureFlags
+
+): Promise<VertexInferenceAdapter<Input, Output>> {
+
+  const f = resolveFlags(flags);
+
+
+
+  const noop: VertexInferenceAdapter<Input, Output> = {
+
+    infer: async () => null,
+
+  };
+
+
+
+  if (!f.vertexInference) return noop;
+
+
+
+  try {
+
+    const endpoint = getEnv("VERTEX_ENDPOINT");
+
+    if (!endpoint) return noop;
+
+
+
+    return {
+
+      infer: async (input: Input) => {
+
+        try {
+
+          void endpoint;
+
+          void input;
+
+          // Replace with your Vertex prediction call.
+
+          return null;
+
+        } catch {
+
+          return null;
+
+        }
+
+      },
+
+    };
+
+  } catch {
+
+    return noop;
+
+  }
+
+}
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+export type VertexExplainabilityAdapter = {
+
+  enrichExplanation: (context: Record<string, any>) => Promise<Record<string, any> | null>;
+
+};
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+export async function getVertexExplainabilityAdapter(
+
+  flags?: FeatureFlags
+
+): Promise<VertexExplainabilityAdapter> {
+
+  const f = resolveFlags(flags);
+
+
+
+  const noop: VertexExplainabilityAdapter = {
+
+    enrichExplanation: async () => null,
+
+  };
+
+
+
+  if (!f.vertexExplainability) return noop;
+
+
+
+  try {
+
+    const endpoint = getEnv("VERTEX_EXPLAIN_ENDPOINT");
+
+    if (!endpoint) return noop;
+
+
+
+    return {
+
+      enrichExplanation: async (context) => {
+
+        try {
+
+          void endpoint;
+
+          void context;
+
+          // Replace with your Explainable AI call.
+
+          return null;
+
+        } catch {
+
+          return null;
+
+        }
+
+      },
+
+    };
+
+  } catch {
+
+    return noop;
+
+  }
+
+}
