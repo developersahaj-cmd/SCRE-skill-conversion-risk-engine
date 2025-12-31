@@ -1,0 +1,525 @@
+
+
+import React, { useMemo, useState } from "react";
+
+import { motion } from "framer-motion";
+
+import { ArrowLeft, ArrowRight, CheckCircle } from "lucide-react";
+
+
+
+import { Button } from "@/components/ui/button";
+
+import { Slider } from "@/components/ui/slider";
+
+import { Textarea } from "@/components/ui/textarea";
+
+
+
+import QuestionTooltip from "./QuestionTooltip";
+
+
+
+type SliderQuestion = {
+
+  id: string;
+
+  type: "slider";
+
+  question: string;
+
+  labels: [string, string, string];
+
+  weight: number;
+
+};
+
+
+
+type TextQuestion = {
+
+  id: string;
+
+  type: "text";
+
+  question: string;
+
+  placeholder: string;
+
+  weight: number;
+
+};
+
+
+
+type Question = SliderQuestion | TextQuestion;
+
+
+
+type Props = {
+
+  skill: { name: string };
+
+  onComplete: (answers: Record<string, number | string>) => void;
+
+  onBack: () => void;
+
+};
+
+
+
+const questions: Question[] = [
+
+  {
+
+    id: "practice_frequency",
+
+    type: "slider",
+
+    question: "How frequently do you engage in deliberate practice for learning new skills?",
+
+    labels: ["Rarely", "Weekly", "Daily"],
+
+    weight: 0.2,
+
+  },
+
+  {
+
+    id: "feedback_response",
+
+    type: "slider",
+
+    question: "How do you typically respond to critical feedback on your work?",
+
+    labels: ["Avoid it", "Accept it", "Seek it actively"],
+
+    weight: 0.15,
+
+  },
+
+  {
+
+    id: "abstraction_preference",
+
+    type: "slider",
+
+    question: "When learning, do you prefer concrete examples or abstract concepts?",
+
+    labels: ["Concrete only", "Balanced", "Abstract systems"],
+
+    weight: 0.2,
+
+  },
+
+  {
+
+    id: "cognitive_load",
+
+    type: "slider",
+
+    question: "How do you handle complex, multi-step problems?",
+
+    labels: ["Overwhelmed", "Manageable", "Energized"],
+
+    weight: 0.2,
+
+  },
+
+  {
+
+    id: "discipline_self_report",
+
+    type: "slider",
+
+    question: "How would you rate your self-discipline when facing challenging tasks?",
+
+    labels: ["Low", "Moderate", "High"],
+
+    weight: 0.15,
+
+  },
+
+  {
+
+    id: "learning_approach",
+
+    type: "text",
+
+    question:
+
+      "Describe how you typically approach learning something completely new. What strategies do you use ?",
+
+    placeholder: "Share your learning approach in 2-3 sentences...",
+
+    weight: 0.1,
+
+  },
+
+];
+
+
+
+export default function BehavioralQuestionnaire({ skill, onComplete, onBack }: Props) {
+
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+
+  const [answers, setAnswers] = useState<Record<string, number | string>>({});
+
+  const [showEncouragement, setShowEncouragement] = useState(false);
+
+
+
+  const question = useMemo(() => questions[currentQuestion], [currentQuestion]);
+
+
+
+  const handleSliderChange = (id: string, value: number[]) => {
+
+    setAnswers((prev) => ({ ...prev, [id]: value[0] }));
+
+  };
+
+
+
+  const handleTextChange = (id: string, value: string) => {
+
+    setAnswers((prev) => ({ ...prev, [id]: value }));
+
+  };
+
+
+
+  const isAnswered =
+
+    answers[question.id] !== undefined &&
+
+    (question.type !== "text" ||
+
+      (typeof answers[question.id] === "string" && (answers[question.id] as string).trim().length > 10));
+
+
+
+  const answeredCount = Object.keys(answers).length;
+
+
+
+  const handleNext = () => {
+
+    if (currentQuestion < questions.length - 1) {
+
+      setCurrentQuestion((prev) => prev + 1);
+
+
+
+      // Show encouragement at midpoint
+
+      if (currentQuestion === Math.floor(questions.length / 2) - 1) {
+
+        setShowEncouragement(true);
+
+        window.setTimeout(() => setShowEncouragement(false), 3000);
+
+      }
+
+    } else {
+
+      onComplete(answers);
+
+    }
+
+  };
+
+
+
+  const handlePrevious = () => {
+
+    if (currentQuestion > 0) {
+
+      setCurrentQuestion((prev) => prev - 1);
+
+    } else {
+
+      onBack();
+
+    }
+
+  };
+
+
+
+  return (
+
+    <motion.div
+
+      initial={{ opacity: 0, y: 20 }}
+
+      animate={{ opacity: 1, y: 0 }}
+
+      exit={{ opacity: 0, y: 20 }}
+
+      transition={{ duration: 0.4 }}
+
+      className="pb-20"
+
+    >
+
+      {/* Encouragement Message */}
+
+      {showEncouragement && (
+
+        <motion.div
+
+          initial={{ opacity: 0, y: 20 }}
+
+          animate={{ opacity: 1, y: 0 }}
+
+          exit={{ opacity: 0, y: 20 }}
+
+          className="fixed top-24 left-1/2 -translate-x-1/2 z-50 bg-teal-500/20 border border-teal-500/50 rounded-xl px-6 py-3 backdrop-blur-xl shadow-xl"
+
+        >
+
+          <div className="flex items-center gap-3">
+
+            <CheckCircle className="w-5 h-5 text-teal-400" />
+
+            <p className="text-teal-200 font-medium">Great progress! You're halfway there.</p>
+
+          </div>
+
+        </motion.div>
+
+      )}
+
+
+
+      <div className="text-center mb-8">
+
+        <span className="inline-block px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-400 text-xs font-medium mb-4">
+
+          Step 2 of 4 • {skill.name}
+
+        </span>
+
+
+
+        <h2 className="text-2xl md:text-3xl font-bold text-white mb-2">Behavioral Assessment</h2>
+
+
+
+        <div className="flex items-center justify-center gap-3 text-sm">
+
+          <p className="text-slate-400">
+
+            Question {currentQuestion + 1} of {questions.length}
+
+          </p>
+
+          <span className="text-slate-600">•</span>
+
+          <p className="text-teal-400">{answeredCount} answered</p>
+
+        </div>
+
+      </div>
+
+
+
+      {/* Progress Bar */}
+
+      <div className="max-w-2xl mx-auto mb-8">
+
+        <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
+
+          <motion.div
+
+            className="h-full bg-gradient-to-r from-cyan-500 to-teal-500"
+
+            initial={{ width: 0 }}
+
+            animate={{ width: `${((currentQuestion + 1) / questions.length) * 100}%` }}
+
+            transition={{ duration: 0.3 }}
+
+          />
+
+        </div>
+
+      </div>
+
+
+
+      {/* Question Card */}
+
+      <motion.div
+
+        key={currentQuestion}
+
+        initial={{ opacity: 0, x: 20 }}
+
+        animate={{ opacity: 1, x: 0 }}
+
+        exit={{ opacity: 0, x: -20 }}
+
+        transition={{ duration: 0.4, type: "spring", stiffness: 80 }}
+
+        className="max-w-2xl mx-auto"
+
+      >
+
+        <div className="bg-gradient-to-br from-slate-900/90 to-slate-900/70 border border-slate-800/60 rounded-3xl p-8 shadow-2xl backdrop-blur-sm relative overflow-hidden">
+
+          {/* Subtle gradient overlay */}
+
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-500/20 to-transparent" />
+
+
+
+          <QuestionTooltip questionId={question.id}>
+
+            <h3 className="text-xl text-white font-semibold mb-8 leading-relaxed relative z-10">
+
+              {question.question}
+
+            </h3>
+
+          </QuestionTooltip>
+
+
+
+          {question.type === "slider" ? (
+
+            <div className="space-y-6 relative z-10">
+
+              <div className="relative">
+
+                <Slider
+
+                  value={[typeof answers[question.id] === "number" ? (answers[question.id] as number) : 50]}
+
+                  onValueChange={(val) => handleSliderChange(question.id, val)}
+
+                  max={100}
+
+                  step={1}
+
+                  className="py-4"
+
+                />
+
+              </div>
+
+
+
+              <div className="flex justify-between text-sm">
+
+                {question.labels.map((label, idx) => (
+
+                  <span
+
+                    key={idx}
+
+                    className={`text-slate-400 font-medium ${
+
+                      idx === 0 ? "text-left" : idx === 2 ? "text-right" : "text-center"
+
+                    }`}
+
+                  >
+
+                    {label}
+
+                  </span>
+
+                ))}
+
+              </div>
+
+            </div>
+
+          ) : (
+
+            <Textarea
+
+              value={typeof answers[question.id] === "string" ? (answers[question.id] as string) : ""}
+
+              onChange={(e) => handleTextChange(question.id, e.target.value)}
+
+              placeholder={question.placeholder}
+
+              className="bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500 min-h-[140px] focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/30 rounded-xl transition-all duration-300 resize-none relative z-10"
+
+            />
+
+          )}
+
+
+
+          {/* Navigation */}
+
+          <div className="flex justify-between mt-8">
+
+            <Button
+
+              variant="ghost"
+
+              onClick={handlePrevious}
+
+              className="text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-xl px-6 transition-all duration-300"
+
+            >
+
+              <ArrowLeft className="w-4 h-4 mr-2" />
+
+              Back
+
+            </Button>
+
+
+
+            <Button
+
+              onClick={handleNext}
+
+              disabled={!isAnswered}
+
+              className="bg-gradient-to-r from-cyan-500 to-teal-500 text-white hover:from-cyan-600 hover:to-teal-600 disabled:opacity-50 rounded-xl px-8 shadow-lg shadow-cyan-500/25 hover:shadow-xl hover:shadow-cyan-500/30 transition-all duration-300 hover:scale-105 disabled:hover:scale-100"
+
+            >
+
+              {currentQuestion < questions.length - 1 ? (
+
+                <>
+
+                  Continue
+
+                  <ArrowRight className="w-4 h-4 ml-2" />
+
+                </>
+
+              ) : (
+
+                <>
+
+                  Proceed to Task
+
+                  <ArrowRight className="w-4 h-4 ml-2" />
+
+                </>
+
+              )}
+
+            </Button>
+
+          </div>
+
+        </div>
+
+      </motion.div>
+
+    </motion.div>
+
+  );
+
+}
