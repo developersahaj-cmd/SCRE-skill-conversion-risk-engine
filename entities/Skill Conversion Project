@@ -1,0 +1,140 @@
+
+{
+
+  "name": "Skill ConversionProject",
+
+  "type": "object",
+
+  "properties": {
+
+    "project_name": {
+
+      "type": "string",
+
+      "description": "Name of the skill conversion project"
+
+    },
+
+    "department": {
+
+      "type": "string",
+
+      "description": "Department owning the project"
+
+    },
+
+    "source_skill": {
+
+      "type": "string",
+
+      "description": "Original skill being converted from"
+
+    },
+
+    "target_skill": {
+
+      "type": "string",
+
+      "description": "Target skill being converted to"
+
+    },
+
+    "status": {
+
+      "type": "string",
+
+      "enum": ["planning", "in_progress", "at_risk", "completed", "cancelled"],
+
+      "default": "planning",
+
+      "description": "Current project status"
+
+    },
+
+    "risk_level": {
+
+      "type": "string",
+
+      "enum": ["low", "medium", "high", "critical"],
+
+      "default": "medium",
+
+      "description": "Overall risk level"
+
+    },
+
+    "risk_score": {
+
+      "type": "number",
+
+      "description": "AI-generated risk score (0-100)"
+
+    },
+
+    "conversion_success_rate": {
+
+      "type": "number",
+
+      "description": "Success rate percentage"
+
+    },
+
+    "employees_affected": {
+
+      "type": "integer",
+
+      "description": "Number of employees in the conversion"
+
+    },
+
+    "start_date": {
+
+      "type": "string",
+
+      "format": "date",
+
+      "description": "Project start date"
+
+    },
+
+    "target_completion_date": {
+
+      "type": "string",
+
+      "format": "date",
+
+      "description": "Target completion date"
+
+    },
+
+    "budget": {
+
+      "type": "number",
+
+      "description": "Project budget"
+
+    },
+
+    "description": {
+
+      "type": "string",
+
+      "description": "Detailed project description"
+
+    },
+
+    "ai_analysis_completed": {
+
+      "type": "boolean",
+
+      "default": false,
+
+      "description": "Whether AI analysis has been run"
+
+    }
+
+  },
+
+  "required": ["project_name", "department", "source_skill", "target_skill"]
+
+}
