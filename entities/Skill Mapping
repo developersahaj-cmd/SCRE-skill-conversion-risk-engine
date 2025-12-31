@@ -1,0 +1,438 @@
+import React, { useState } from "react";
+
+import { base44 } from "@/api/base44Client";
+
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+
+import { Link } from "react-router-dom";
+
+import { createPageUrl } from "@/utils";
+
+import { Button } from "@/components/ui/button";
+
+import { Input } from "@/components/ui/input";
+
+import { Label } from "@/components/ui/label";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
+import AIAnalysisCard from "../components/ai/AIAnalysisCard";
+
+import { Sparkles, Search, Loader2, ArrowLeft } from "lucide-react";
+
+import { motion } from "framer-motion";
+
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+export default function SkillMapping() {
+  const [sourceSkill, setSourceSkill] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const queryClient = useQueryClient();
+
+  const { data: projects = [] } = useQuery({
+    queryKey: ["projects"],
+    queryFn: () => base44.entities.SkillConversionProject.list(),
+  });
+
+  const { data: mappings = [] } = useQuery({
+    queryKey: ["skillMappings", projectId],
+    queryFn: () =>
+      base44.entities.SkillMapping.filter({
+        project_id: projectId,
+      }),
+    enabled: !!projectId,
+  });
+
+  const updateMappingMutation = useMutation({
+    mutationFn: ({ id, data }) => base44.entities.SkillMapping.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["skillMappings", projectId] });
+    },
+  });
+
+  const generateSkillMappings = async () => {
+    if (!sourceSkill || !projectId) return;
+
+    setIsGenerating(true);
+
+    // SAFE INTEGRATION LAYER (Non-breaking)
+    // Optional analytics logging (fire-and-forget). No impact if unavailable.
+    safeBigQueryLogEvent("skill_mapping_generate_clicked", {
+      projectId,
+      sourceSkill,
+    });
+
+    try {
+      // SAFE INTEGRATION LAYER (Non-breaking)
+      // Optional Gemini insight generation (non-blocking). Ignored if unavailable.
+      // This does NOT alter SCRE’s neutrality—only optional extra insights.
+      void safeGeminiGenerateInsight({
+        type: "skill_mapping_context",
+        projectId,
+        sourceSkill,
+      });
+
+      const result = await base44.integrations.Core.InvokeLLM({
+        prompt: `Generate 5-7 skill mapping suggestions for someone transitioning from "${sourceSkill}".
+For each suggestion, provide:
+1. suggested_skill: The recommended skill name
+2. mapping_type: Choose from: equivalent, complementary, prerequisite, or advanced
+3. confidence_score: A score from 0-100 indicating how relevant this suggestion is.
+4. reasoning: A clear 2-3 sentence explanation of why this mapping makes sense
+
+Consider:
+- Direct equivalents in other domains
+- Complementary skills that enhance the source skill
+- Prerequisites that strengthen the foundation
+- Advanced skills that represent natural progression`,
+        // NOTE: Keeping key name as minimally inferred from context; safe if ignored by backend.
+        response_json_schema: {
+          type: "object",
+          properties: {
+            mappings: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  suggested_skill: { type: "string" },
+                  mapping_type: { type: "string" },
+                  confidence_score: { type: "number" },
+                  reasoning: { type: "string" },
+                },
+                required: [
+                  "suggested_skill",
+                  "mapping_type",
+                  "confidence_score",
+                  "reasoning",
+                ],
+              },
+            },
+          },
+          required: ["mappings"],
+        },
+      });
+
+      // Create skill mappings (least-invasive guards)
+      const mappingsList = Array.isArray(result?.mappings) ? result.mappings : [];
+      for (const mapping of mappingsList) {
+        await base44.entities.SkillMapping.create({
+          project_id: projectId,
+          source_skill: sourceSkill,
+          ...mapping,
+          ai_generated: true,
+          user_feedback: "pending",
+        });
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["skillMappings", projectId] });
+
+      // SAFE INTEGRATION LAYER (Non-breaking)
+      safeBigQueryLogEvent("skill_mapping_generate_success", {
+        projectId,
+        sourceSkill,
+        createdCount: mappingsList.length,
+      });
+    } catch (error) {
+      // SAFE INTEGRATION LAYER (Non-breaking)
+      safeBigQueryLogEvent("skill_mapping_generate_error", {
+        projectId,
+        sourceSkill,
+        message: String(error?.message || error),
+      });
+
+      // Keep existing behavior: do not crash UI.
+      // eslint-disable-next-line no-console
+      console.error("Skill mapping generation failed:", error);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const mappingTypeLabels = {
+    equivalent: "Equivalent Skill",
+    complementary: "Complementary Skill",
+    prerequisite: "Prerequisite Skill",
+    advanced: "Advanced Skill",
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+      <div className="max-w-5xl mx-auto space-y-6">
+        <Link to={createPageUrl("Home")}>
+          <Button variant="ghost" className="mb-2">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Home
+          </Button>
+        </Link>
+
+        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
+          <h1 className="text-4xl font-bold text-slate-900 mb-2">AI Skill Mapping</h1>
+          <p className="text-slate-600">
+            Discover equivalent and complementary skills with AI assistance
+          </p>
+        </motion.div>
+
+        {/* Input Card */}
+        <Card className="border-slate-200">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Search className="w-5 h-5 mr-2 text-slate-600" />
+              Generate Skill Mappings
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent className="space-y-4">
+            <div>
+              <Label>Select Project</Label>
+              <Select value={projectId} onValueChange={setProjectId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a project" />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects.map((project) => (
+                    <SelectItem key={project.id} value={project.id}>
+                      {project?.project_name ?? project?.name ?? project?.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Source Skill</Label>
+              <Input
+                value={sourceSkill}
+                onChange={(e) => setSourceSkill(e.target.value)}
+                placeholder="e.g., Java Programming, Project Management, Data Analysis"
+              />
+            </div>
+
+            <Button
+              onClick={generateSkillMappings}
+              disabled={!sourceSkill || !projectId || isGenerating}
+              className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Generating Mappings...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Generate AI Suggestions
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Mappings Results */}
+        {mappings.length > 0 && (
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold text-slate-900">
+              Suggested Skill Mappings for "{mappings[0]?.source_skill}"
+            </h2>
+
+            {mappings.map((mapping) => (
+              <AIAnalysisCard
+                key={mapping.id}
+                title={`${mapping.suggested_skill} ${
+                  mappingTypeLabels[mapping.mapping_type] || ""
+                }`}
+                content={mapping.reasoning}
+                confidence={mapping.confidence_score}
+                status={mapping.user_feedback}
+                onAccept={() =>
+                  updateMappingMutation.mutate({
+                    id: mapping.id,
+                    data: { user_feedback: "accepted" },
+                  })
+                }
+                onReject={() =>
+                  updateMappingMutation.mutate({
+                    id: mapping.id,
+                    data: { user_feedback: "rejected" },
+                  })
+                }
+                onModify={() =>
+                  updateMappingMutation.mutate({
+                    id: mapping.id,
+                    data: { user_feedback: "modified" },
+                  })
+                }
+                showActions={mapping.user_feedback === "pending"}
+              />
+            ))}
+          </div>
+        )}
+
+        {projectId && mappings.length === 0 && !isGenerating && (
+          <Card className="border-slate-200">
+            <CardContent className="py-12 text-center">
+              <p className="text-slate-600 mb-2">No skill mappings yet</p>
+              <p className="text-sm text-slate-500">
+                Enter a source skill and generate AI suggestions to get started
+              </p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* =========================
+          OPTIONAL INTEGRATIONS
+          ========================= */}
+
+      {/* SAFE INTEGRATION LAYER (Non-breaking)
+          - No imports added at module scope
+          - Lazy loaded + try/catch
+          - Feature flagged
+          - Fallback no-op
+          - Never blocks UI
+      */}
+    </div>
+  );
+}
+
+/* =========================================================
+   SAFE INTEGRATION LAYER (Non-breaking)
+   ========================================================= */
+
+/**
+ * SAFE INTEGRATION LAYER (Non-breaking)
+ * Feature flags (guarded, no env assumptions).
+ * Enable by setting window.__SCRE_FLAGS__ at runtime, e.g.:
+ * window.__SCRE_FLAGS__ = { firebaseAuth: true, geminiInsight: true, bigQueryLog: true, vertexInference: true, vertexExplain: true };
+ */
+function getSCREFlags() {
+  try {
+    const flags = typeof window !== "undefined" ? window.__SCRE_FLAGS__ : null;
+    return flags && typeof flags === "object" ? flags : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * SAFE INTEGRATION LAYER (Non-breaking)
+ * Optional Firebase: auth + user profile persistence only.
+ * This returns null if unavailable; no crashes.
+ */
+async function safeInitFirebaseAuth() {
+  const flags = getSCREFlags();
+  if (!flags.firebaseAuth) return null;
+
+  try {
+    // Lazy import only when enabled
+    const mod = await import("firebase/app");
+    const authMod = await import("firebase/auth");
+
+    // Guard config existence; do not assume env vars.
+    const config =
+      (typeof window !== "undefined" && window.__FIREBASE_CONFIG__) || null;
+    if (!config || typeof config !== "object") return null;
+
+    const app = mod.getApps?.().length ? mod.getApp() : mod.initializeApp(config);
+    const auth = authMod.getAuth(app);
+
+    return { app, auth };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * SAFE INTEGRATION LAYER (Non-breaking)
+ * Optional Gemini API: insight generation only (non-blocking).
+ * Returns empty result if unavailable.
+ */
+async function safeGeminiGenerateInsight(payload) {
+  const flags = getSCREFlags();
+  if (!flags.geminiInsight) return { ok: false, insight: "" };
+
+  try {
+    // Lazy import a hypothetical local client if present. If not, no-op.
+    // Avoid breaking imports/global side effects.
+    const client = await import("@/api/geminiClient").catch(() => null);
+    if (!client?.generateInsight) return { ok: false, insight: "" };
+
+    // Non-blocking contract is enforced by caller using void/ignoring result.
+    const res = await client.generateInsight(payload);
+    return res && typeof res === "object"
+      ? res
+      : { ok: true, insight: String(res ?? "") };
+  } catch {
+    return { ok: false, insight: "" };
+  }
+}
+
+/**
+ * SAFE INTEGRATION LAYER (Non-breaking)
+ * Optional BigQuery: analytics logging only (async, fire-and-forget).
+ */
+function safeBigQueryLogEvent(eventName, data) {
+  const flags = getSCREFlags();
+  if (!flags.bigQueryLog) return;
+
+  // Fire-and-forget, never throw
+  Promise.resolve()
+    .then(async () => {
+      try {
+        // Lazy import a hypothetical local logger if present. If not, no-op.
+        const logger = await import("@/api/bigQueryLogger").catch(() => null);
+        if (!logger?.logEvent) return;
+        await logger.logEvent({ eventName, data });
+      } catch {
+        // swallow
+      }
+    })
+    .catch(() => {
+      // swallow
+    });
+}
+
+/**
+ * SAFE INTEGRATION LAYER (Non-breaking)
+ * Optional Vertex AI: model inference behind abstraction layer only.
+ * Returns mocked/empty results if unavailable.
+ */
+async function safeVertexInfer(request) {
+  const flags = getSCREFlags();
+  if (!flags.vertexInference) return { ok: false, output: null };
+
+  try {
+    const client = await import("@/api/vertexClient").catch(() => null);
+    if (!client?.infer) return { ok: false, output: null };
+    const output = await client.infer(request);
+    return { ok: true, output };
+  } catch {
+    return { ok: false, output: null };
+  }
+}
+
+/**
+ * SAFE INTEGRATION LAYER (Non-breaking)
+ * Optional Vertex Explainable AI: explanation enrichment only if available.
+ * Returns empty explanations if unavailable.
+ */
+async function safeVertexExplain(request) {
+  const flags = getSCREFlags();
+  if (!flags.vertexExplain) return { ok: false, explanations: [] };
+
+  try {
+    const client = await import("@/api/vertexExplainClient").catch(() => null);
+    if (!client?.explain) return { ok: false, explanations: [] };
+    const explanations = await client.explain(request);
+    return { ok: true, explanations: Array.isArray(explanations) ? explanations : [] };
+  } catch {
+    return { ok: false, explanations: [] };
+  }
+}
