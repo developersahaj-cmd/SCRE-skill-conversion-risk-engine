@@ -1,0 +1,331 @@
+
+
+import React from 'react';
+
+import { motion } from 'framer-motion';
+import { Lightbulb, Target, TrendingUp, Calendar, CheckCircle2, Download } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+
+/**
+ * // SAFE INTEGRATION LAYER (Non-breaking)
+ * Optional feature flags for external services.
+ * - All are OFF by default.
+ * - Guarded to avoid crashes if services are unavailable.
+ */
+const SCRE_FEATURES = {
+  firebaseAuth: false,
+  geminiInsights: false,
+  bigQueryAnalytics: false,
+  vertexInference: false,
+  vertexExplainableAI: false,
+};
+
+/**
+ * // SAFE INTEGRATION LAYER (Non-breaking)
+ * Lazy, fail-safe service adapters. These are OPTIONAL and return no-op results by default.
+ * They are intentionally not required for the component to function.
+ */
+const SafeServices = (() => {
+  // No-op fallbacks (default).
+  const noop = {
+    auth: {
+      getUser: async () => null,
+      upsertUserProfile: async () => null,
+    },
+    gemini: {
+      generateInsights: async () => null, // non-blocking
+    },
+    bigQuery: {
+      logEvent: async () => null, // fire-and-forget
+    },
+    vertex: {
+      inferRisk: async () => null,
+    },
+    vertexXAI: {
+      enrichExplanation: async () => null,
+    },
+  };
+
+  // Best-effort lazy loader; never throws to caller.
+  const safeLazy = async (loader) => {
+    try {
+      return await loader();
+    } catch (_e) {
+      return null;
+    }
+  };
+
+  // These functions exist for future optional wiring, but are not required/used.
+  const loadFirebase = () =>
+    safeLazy(async () => {
+      if (!SCRE_FEATURES.firebaseAuth) return null;
+      // Intentionally not importing Firebase here to avoid breaking imports / global side effects.
+      // Consumers can provide their own adapter via dependency injection if needed.
+      return null;
+    });
+
+  const loadGemini = () =>
+    safeLazy(async () => {
+      if (!SCRE_FEATURES.geminiInsights) return null;
+      return null;
+    });
+
+  const loadBigQuery = () =>
+    safeLazy(async () => {
+      if (!SCRE_FEATURES.bigQueryAnalytics) return null;
+      return null;
+    });
+
+  const loadVertex = () =>
+    safeLazy(async () => {
+      if (!SCRE_FEATURES.vertexInference) return null;
+      return null;
+    });
+
+  const loadVertexXAI = () =>
+    safeLazy(async () => {
+      if (!SCRE_FEATURES.vertexExplainableAI) return null;
+      return null;
+    });
+
+  return {
+    ...noop,
+    // Expose loaders for OPTIONAL future use.
+    __lazy: { loadFirebase, loadGemini, loadBigQuery, loadVertex, loadVertexXAI },
+  };
+})();
+
+const getRecommendations = (riskBand, factors, skill) => {
+  const recommendations = [];
+  const topFactors = Array.isArray(factors) ? factors.slice(0, 3) : [];
+
+  // General recommendations based on risk band
+  if (riskBand?.label === 'High') {
+    recommendations.push({
+      type: 'immediate',
+      icon: Target,
+      title: 'Start with structured guidance',
+      desc: 'Consider enrolling in a guided course or finding a mentor before self-directed learning',
+      priority: 'high',
+    });
+  }
+
+  if (riskBand?.label === 'Low') {
+    recommendations.push({
+      type: 'accelerate',
+      icon: TrendingUp,
+      title: 'Your conditions favor rapid progress',
+      desc: 'Consider challenging yourself with advanced materials or real-world projects early',
+      priority: 'positive',
+    });
+  }
+
+  // Factor-specific recommendations
+  topFactors.forEach((factor) => {
+    if (factor?.id === 'practice_frequency' && (factor?.userValue ?? 100) < 50) {
+      recommendations.push({
+        type: 'behavioral',
+        icon: Calendar,
+        title: 'Establish a practice routine',
+        desc: 'Block 30-60 minutes daily for deliberate practice. Consistency matters more than duration.',
+        priority: 'high',
+      });
+    }
+
+    if (factor?.id === 'feedback_response' && (factor?.userValue ?? 100) < 50) {
+      recommendations.push({
+        type: 'behavioral',
+        icon: CheckCircle2,
+        title: 'Build feedback tolerance gradually',
+        desc: 'Start with supportive communities. Share small projects to normalize constructive criticism.',
+        priority: 'medium',
+      });
+    }
+
+    if (factor?.id === 'abstraction_preference' && (factor?.userValue ?? 100) < 50) {
+      recommendations.push({
+        type: 'learning',
+        icon: Target,
+        title: 'Bridge concrete to abstract',
+        desc: 'Begin with hands-on projects, then extract patterns. Use analogies to build conceptual understanding.',
+        priority: 'medium',
+      });
+    }
+
+    if (factor?.id === 'cognitive_load' && (factor?.userValue ?? 100) < 50) {
+      recommendations.push({
+        type: 'learning',
+        icon: Lightbulb,
+        title: 'Break down complexity',
+        desc: 'Use task chunking. Master one component fully before adding layers. Track progress visibly.',
+        priority: 'high',
+      });
+    }
+
+    if (factor?.id === 'discipline_self_report' && (factor?.userValue ?? 100) < 50) {
+      recommendations.push({
+        type: 'behavioral',
+        icon: Calendar,
+        title: 'Create external accountability',
+        desc: 'Join study groups, use commitment devices, or work with an accountability partner.',
+        priority: 'high',
+      });
+    }
+  });
+
+  // Skill-specific recommendations
+  if (skill?.id === 'coding') {
+    recommendations.push({
+      type: 'strategy',
+      icon: Target,
+      title: 'Build a project portfolio',
+      desc: 'Work on 3-4 progressively complex projects. Document your learning process.',
+      priority: 'medium',
+    });
+  }
+
+  if (skill?.id === 'creative_writing') {
+    recommendations.push({
+      type: 'strategy',
+      icon: Target,
+      title: 'Write daily, edit weekly',
+      desc: 'Separate generation from critique. Write 500 words daily before judging quality.',
+      priority: 'medium',
+    });
+  }
+
+  return recommendations.slice(0, 5);
+};
+
+export default function PersonalizedInsights({ riskBand, factors, skill, riskScore }) {
+  const recommendations = getRecommendations(riskBand, factors, skill);
+
+  const generateReport = () => {
+    try {
+      const reportContent = `SCRE ASSESSMENT REPORT
+
+Skill: ${skill?.name ?? 'Unknown'}
+Risk Level: ${riskBand?.label ?? 'Unknown'}
+Risk Score: ${typeof riskScore === 'number' ? riskScore : 'N/A'}
+Assessment Date: ${new Date().toLocaleDateString()}
+
+KEY INSIGHTS:
+${(Array.isArray(factors) ? factors : [])
+  .slice(0, 3)
+  .map((f, i) => `${i + 1}. ${f?.name ?? 'Factor'}: ${f?.explanation ?? ''}`)
+  .join('\n')}
+
+RECOMMENDATIONS:
+${recommendations.map((r, i) => `${i + 1}. ${r.title}\n   ${r.desc}`).join('\n\n')}
+
+This assessment is based on current behavioral conditions and may change as you develop new patterns.
+`;
+
+      const blob = new Blob([reportContent], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+
+      a.href = url;
+      a.download = `SCRE-Report-${skill?.name ?? 'Skill'}-${new Date().toISOString().split('T')[0]}.txt`;
+
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (_e) {
+      // Fail-safe: do nothing if export is not available.
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-gradient-to-br from-slate-900/90 to-slate-900/70 border border-slate-800/60 rounded-3xl p-8"
+    >
+      <div className="flex items-start justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center">
+            <Lightbulb className="w-6 h-6 text-purple-400" />
+          </div>
+
+          <div>
+            <h3 className="text-2xl font-bold text-white">Personalized Insights</h3>
+            <p className="text-slate-400 text-sm">Based on your profile</p>
+          </div>
+        </div>
+
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={generateReport}
+          className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
+        >
+          <Download className="w-4 h-4 mr-2" />
+          Export Report
+        </Button>
+      </div>
+
+      <div className="space-y-4">
+        {recommendations.map((rec, idx) => {
+          const Icon = rec.icon;
+          const cardBorder =
+            rec.priority === 'high'
+              ? 'border-amber-500/30'
+              : rec.priority === 'positive'
+                ? 'border-teal-500/30'
+                : 'border-slate-700';
+
+          const iconBg =
+            rec.priority === 'high'
+              ? 'bg-amber-500/20'
+              : rec.priority === 'positive'
+                ? 'bg-teal-500/20'
+                : 'bg-slate-700/50';
+
+          const iconColor =
+            rec.priority === 'high'
+              ? 'text-amber-400'
+              : rec.priority === 'positive'
+                ? 'text-teal-400'
+                : 'text-slate-400';
+
+          return (
+            <motion.div
+              key={idx}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: idx * 0.1 }}
+              className={`bg-slate-800/50 border rounded-xl p-5 ${cardBorder}`}
+            >
+              <div className="flex items-start gap-4">
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+                  <Icon className={`w-5 h-5 ${iconColor}`} />
+                </div>
+
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <h4 className="text-white font-semibold">{rec.title}</h4>
+                    {rec.priority === 'high' && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                        Priority
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-slate-300 text-sm leading-relaxed">{rec.desc}</p>
+                </div>
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      <div className="mt-6 pt-6 border-t border-slate-700">
+        <p className="text-slate-400 text-sm leading-relaxed">
+          <span className="text-cyan-400 font-medium">Note:</span> These insights are derived from your behavior and the
+          demands of {skill?.name ?? 'this skill'}. They represent starting conditions, not fixed outcomes.
+        </p>
+      </div>
+    </motion.div>
+  );
+}
