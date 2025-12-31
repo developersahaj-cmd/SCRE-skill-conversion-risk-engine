@@ -1,0 +1,351 @@
+
+
+import React from 'react';
+
+
+
+import { motion } from 'framer-motion';
+
+
+
+import { Lightbulb, TrendingUp, TrendingDown } from 'lucide-react';
+
+
+
+
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+// Optional, isolated feature-flag helpers (unused by default).
+
+// These are intentionally no-op unless explicitly enabled by a parent integration.
+
+const SCRE_FEATURE_FLAGS = {
+
+  firebaseAuth: false, // Firebase -> auth, user profile persistence only (optional)
+
+  geminiInsights: false, // Gemini API -> insight generation only (non-blocking)
+
+  bigQueryAnalytics: false, // BigQuery -> analytics logging only (async, fire-and-forget)
+
+  vertexInference: false, // Vertex AI -> model inference only behind abstraction layer
+
+  vertexExplainability: false, // Vertex Explainable AI -> explanation enrichment only if available
+
+};
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+// Guarded environment reader. Never assumes env vars exist.
+
+function safeGetEnv(key) {
+
+  try {
+
+    // Works in browser bundlers and Node environments without throwing.
+
+    if (typeof process !== 'undefined' && process && process.env && key in process.env) {
+
+      return process.env[key];
+
+    }
+
+    if (typeof window !== 'undefined' && window && window.__ENV__ && key in window.__ENV__) {
+
+      return window.__ENV__[key];
+
+    }
+
+  } catch (_) {
+
+    // no-op
+
+  }
+
+  return undefined;
+
+}
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+// Lazy, fail-safe loader pattern. Returns null if unavailable.
+
+async function safeLazyImport(importer) {
+
+  try {
+
+    if (!importer) return null;
+
+    const mod = await importer();
+
+    return mod || null;
+
+  } catch (_) {
+
+    return null;
+
+  }
+
+}
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+// Neutral adapter: generates optional non-blocking insights (unused here).
+
+// If integration risks breaking existing behavior, this returns empty results.
+
+async function getOptionalInsightsNoOp(/* { factors, riskBand } */) {
+
+  try {
+
+    if (!SCRE_FEATURE_FLAGS.geminiInsights) return { insights: [] };
+
+    // Intentionally not implemented in this UI component.
+
+    // Parent layers can override via composition without changing this file.
+
+    return { insights: [] };
+
+  } catch (_) {
+
+    return { insights: [] };
+
+  }
+
+}
+
+
+
+
+
+
+
+export default function ExplainabilityPanel({ factors, riskBand }) {
+
+  return (
+
+    <div className="bg-gradient-to-br from-slate-900/90 to-slate-900/70 border border-slate-800/60 rounded-3xl p-8 h-full shadow-2xl backdrop-blur-sm relative overflow-hidden">
+
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-500/20 to-transparent" />
+
+
+
+      <div className="flex items-center gap-3 mb-8 relative z-10">
+
+        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center shadow-lg shadow-purple-500/10">
+
+          <Lightbulb className="w-6 h-6 text-purple-400" />
+
+        </div>
+
+
+
+        <div>
+
+          <h3 className="text-xl font-bold text-white">Why This Condition</h3>
+
+          <p className="text-slate-400 text-xs">Primary contributing factors</p>
+
+        </div>
+
+      </div>
+
+
+
+      <div className="space-y-4">
+
+        {factors.map((factor, index) => {
+
+          const isHighRisk = factor.userValue < 50;
+
+
+
+          return (
+
+            <motion.div
+
+              key={factor.id}
+
+              initial={{ opacity: 0, x: -20 }}
+
+              animate={{ opacity: 1, x: 0 }}
+
+              transition={{ delay: index * 0.15, type: 'spring', stiffness: 100 }}
+
+              whileHover={{ scale: 1.02 }}
+
+              className={`p-5 rounded-2xl border backdrop-blur-sm shadow-lg ${
+
+                isHighRisk
+
+                  ? 'bg-gradient-to-br from-rose-500/15 to-rose-600/10 border-rose-500/30'
+
+                  : 'bg-gradient-to-br from-teal-500/15 to-teal-600/10 border-teal-500/30'
+
+              }`}
+
+            >
+
+              <div className="flex items-start gap-3">
+
+                <div
+
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+
+                    isHighRisk ? 'bg-rose-500/20' : 'bg-teal-500/20'
+
+                  }`}
+
+                >
+
+                  {isHighRisk ? (
+
+                    <TrendingUp className="w-4 h-4 text-rose-400" />
+
+                  ) : (
+
+                    <TrendingDown className="w-4 h-4 text-teal-400" />
+
+                  )}
+
+                </div>
+
+
+
+                <div className="flex-1 min-w-0">
+
+                  <div className="flex items-center justify-between mb-2">
+
+                    <h4
+
+                      className={`font-medium text-sm ${
+
+                        isHighRisk ? 'text-rose-200' : 'text-teal-200'
+
+                      }`}
+
+                    >
+
+                      {factor.name}
+
+                    </h4>
+
+
+
+                    <span
+
+                      className={`text-xs px-2 py-0.5 rounded-full ${
+
+                        isHighRisk
+
+                          ? 'bg-rose-500/30 text-rose-300'
+
+                          : 'bg-teal-500/30 text-teal-300'
+
+                      }`}
+
+                    >
+
+                      {isHighRisk ? 'Higher Impact' : 'Lower Impact'}
+
+                    </span>
+
+                  </div>
+
+
+
+                  <p
+
+                    className={`text-sm leading-relaxed ${
+
+                      isHighRisk ? 'text-rose-300/70' : 'text-teal-300/70'
+
+                    }`}
+
+                  >
+
+                    {factor.explanation}
+
+                  </p>
+
+
+
+                  {/* Factor Weight Indicator */}
+
+                  <div className="mt-3 flex items-center gap-2">
+
+                    <span className="text-xs text-slate-500">Weight:</span>
+
+
+
+                    <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+
+                      <motion.div
+
+                        initial={{ width: 0 }}
+
+                        animate={{ width: `${factor.weight * 100}%` }}
+
+                        transition={{ delay: 0.3, duration: 0.5 }}
+
+                        className={`h-full rounded-full ${
+
+                          isHighRisk ? 'bg-rose-500' : 'bg-teal-500'
+
+                        }`}
+
+                      />
+
+                    </div>
+
+
+
+                    <span className="text-xs text-slate-400">
+
+                      {Math.round(factor.weight * 100)}%
+
+                    </span>
+
+                  </div>
+
+                </div>
+
+              </div>
+
+            </motion.div>
+
+          );
+
+        })}
+
+      </div>
+
+
+
+      {/* Interpretation Note */}
+
+      <div className="mt-6 p-4 rounded-xl bg-slate-800/50 border border-slate-700/50">
+
+        <p className="text-slate-400 text-xs leading-relaxed">
+
+          <span className="text-slate-300 font-medium">Interpretation: </span>
+
+          These factors represent behavioral patterns that may influence your skill conversion journey. They are not fixed traits and can shift with intentional practice and environmental adjustments.
+
+        </p>
+
+      </div>
+
+    </div>
+
+  );
+
+}
