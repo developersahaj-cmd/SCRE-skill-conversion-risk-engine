@@ -1,0 +1,737 @@
+import React from "react";
+
+
+
+import { Link } from "react-router-dom";
+
+import { createPageUrl } from "@/utils";
+
+
+
+import { Button } from "@/components/ui/button";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
+
+
+import { ArrowLeft, Target, Code, Lightbulb, Shield, Zap, BookOpen } from "lucide-react";
+
+import { motion } from "framer-motion";
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+// Optional, isolated adapters for future integrations.
+
+// - No imports at top-level (prevents build/runtime crashes if SDKs missing)
+
+// - Feature-flagged, lazy, try/catch wrapped
+
+// - No-op fallbacks
+
+const SAFE_FLAGS = {
+
+  firebase: false,
+
+  gemini: false,
+
+  bigquery: false,
+
+  vertex: false,
+
+  vertexExplain: false,
+
+};
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+function getSafeEnv(key, fallback = undefined) {
+
+  try {
+
+    // Do NOT assume environment variables exist — guard everything.
+
+    // Supports Vite (import.meta.env) and Node-style (process.env).
+
+    const viteVal = typeof import.meta !== "undefined" && import.meta?.env ? import.meta.env[key] : undefined;
+
+    const nodeVal = typeof process !== "undefined" && process?.env ? process.env[key] : undefined;
+
+    return viteVal ?? nodeVal ?? fallback;
+
+  } catch {
+
+    return fallback;
+
+  }
+
+}
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+function safeNoop() {
+
+  return undefined;
+
+}
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+async function safeFirebaseAuthInit() {
+
+  if (!SAFE_FLAGS.firebase) return { ok: false, reason: "disabled" };
+
+  try {
+
+    // Lazy load only when enabled.
+
+    const firebaseAppMod = await import("firebase/app");
+
+    const firebaseAuthMod = await import("firebase/auth");
+
+
+
+    const apiKey = getSafeEnv("VITE_FIREBASE_API_KEY") ?? getSafeEnv("FIREBASE_API_KEY");
+
+    const authDomain = getSafeEnv("VITE_FIREBASE_AUTH_DOMAIN") ?? getSafeEnv("FIREBASE_AUTH_DOMAIN");
+
+    const projectId = getSafeEnv("VITE_FIREBASE_PROJECT_ID") ?? getSafeEnv("FIREBASE_PROJECT_ID");
+
+
+
+    if (!apiKey || !authDomain || !projectId) return { ok: false, reason: "missing_config" };
+
+
+
+    const { initializeApp, getApps } = firebaseAppMod;
+
+    const { getAuth } = firebaseAuthMod;
+
+
+
+    const app = (getApps && getApps().length) ? getApps()[0] : initializeApp({ apiKey, authDomain, projectId });
+
+    const auth = getAuth(app);
+
+
+
+    return { ok: true, auth };
+
+  } catch {
+
+    return { ok: false, reason: "unavailable" };
+
+  }
+
+}
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+async function safeGeminiInsightGenerate(_prompt) {
+
+  if (!SAFE_FLAGS.gemini) return { ok: false, insight: "" };
+
+  try {
+
+    // Intentionally no hard dependency on any Gemini SDK.
+
+    // If you later add a Gemini client, do it here with lazy import + guards.
+
+    return { ok: true, insight: "" };
+
+  } catch {
+
+    return { ok: false, insight: "" };
+
+  }
+
+}
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+async function safeBigQueryLog(_event) {
+
+  if (!SAFE_FLAGS.bigquery) return { ok: false };
+
+  try {
+
+    // Fire-and-forget analytics logging (async).
+
+    // No hard dependency; safe fallback.
+
+    return { ok: true };
+
+  } catch {
+
+    return { ok: false };
+
+  }
+
+}
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+async function safeVertexInfer(_payload) {
+
+  if (!SAFE_FLAGS.vertex) return { ok: false, result: null };
+
+  try {
+
+    // Vertex AI inference behind abstraction layer only.
+
+    return { ok: true, result: null };
+
+  } catch {
+
+    return { ok: false, result: null };
+
+  }
+
+}
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+async function safeVertexExplain(_payload) {
+
+  if (!SAFE_FLAGS.vertexExplain) return { ok: false, explanation: null };
+
+  try {
+
+    // Vertex Explainable AI enrichment only if available.
+
+    return { ok: true, explanation: null };
+
+  } catch {
+
+    return { ok: false, explanation: null };
+
+  }
+
+}
+
+
+
+export default function About() {
+
+  const founders = [
+
+    {
+
+      name: "Sahaj Chawla",
+
+      grade: "Grade 9",
+
+      role: "Co-Founder & Technical Lead",
+
+      specialty: "Technical Development",
+
+      description:
+
+        "Founder of Social Connect, Sahaj brings deep technical expertise to SCRE. He leads all technical development for the Skill Conversion Risk Engine.",
+
+      skills: ["Full-Stack Development", "AI Integration", "System Architecture", "Database Design"],
+
+      icon: Code,
+
+      color: "from-blue-500 to-cyan-500",
+
+    },
+
+    {
+
+      name: "Ansh Gupta",
+
+      grade: "Grade 9",
+
+      role: "Co-Founder & Strategy Lead",
+
+      specialty: "Problem Solving & Entrepreneurship",
+
+      description:
+
+        "With a passion for solving complex problems, Ansh drives the strategic vision of SCRE. His entrepreneurial mindset ensures the platform addresses real-world challenges.",
+
+      skills: ["Strategic Planning", "Problem Solving", "Business Development", "Product Vision"],
+
+      icon: Lightbulb,
+
+      color: "from-purple-500 to-pink-500",
+
+    },
+
+  ];
+
+
+
+  // SAFE INTEGRATION LAYER (Non-breaking)
+
+  // Optional, isolated, non-blocking side effects (disabled by default).
+
+  React.useEffect(() => {
+
+    let cancelled = false;
+
+
+
+    (async () => {
+
+      try {
+
+        // Firebase: auth/user profile persistence only (optional)
+
+        await safeFirebaseAuthInit();
+
+
+
+        // BigQuery: analytics logging only (async, fire-and-forget)
+
+        safeBigQueryLog({ type: "page_view", page: "About", ts: Date.now() }).catch(safeNoop);
+
+
+
+        // Gemini: insight generation only (non-blocking)
+
+        // NOTE: Not used to change SCRE decisions; kept neutral.
+
+        const _ = await safeGeminiInsightGenerate("SCRE About page viewed");
+
+        if (cancelled) return;
+
+
+
+        // Vertex: model inference only behind abstraction layer (unused on About page)
+
+        // Vertex Explainable AI: enrichment only (unused on About page)
+
+        // Kept as optional placeholders.
+
+        void safeVertexInfer(null);
+
+        void safeVertexExplain(null);
+
+      } catch {
+
+        // Fail-safe: swallow all errors to prevent crashes.
+
+      }
+
+    })();
+
+
+
+    return () => {
+
+      cancelled = true;
+
+    };
+
+  }, []);
+
+
+
+  return (
+
+    <div className="min-h-screen bg-slate-900">
+
+      {/* Navigation */}
+
+      <nav className="border-b border-slate-800 bg-slate-900/95 backdrop-blur-sm sticky top-0 z-50">
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+          <div className="flex items-center justify-between h-16">
+
+            <Link to={createPageUrl("Home")} className="flex items-center space-x-3">
+
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+
+                <Target className="w-6 h-6 text-white" />
+
+              </div>
+
+              <span className="text-xl font-bold text-white">SCRE</span>
+
+            </Link>
+
+
+
+            <Link to={createPageUrl("Home")}>
+
+              <Button variant="ghost" className="text-slate-300 hover:text-white hover:bg-slate-800">
+
+                <ArrowLeft className="w-4 h-4 mr-2" />
+
+                Back to Home
+
+              </Button>
+
+            </Link>
+
+          </div>
+
+        </div>
+
+      </nav>
+
+
+
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+
+        {/* About SCRE */}
+
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-16">
+
+          <h1 className="text-4xl md:text-5xl font-bold text-white mb-12 text-center">About SCRE</h1>
+
+
+
+          {/* Our Purpose */}
+
+          <Card className="bg-slate-800 border-slate-700 mb-8">
+
+            <CardHeader>
+
+              <CardTitle className="flex items-center text-white">
+
+                <Target className="w-6 h-6 mr-3 text-blue-500" />
+
+                Our Purpose
+
+              </CardTitle>
+
+            </CardHeader>
+
+            <CardContent>
+
+              <p className="text-slate-300 leading-relaxed">
+
+                SCRE was created to reduce uncertainty in learning decisions by making skill behavior mismatch visible
+
+                early.
+
+              </p>
+
+            </CardContent>
+
+          </Card>
+
+
+
+          {/* How SCRE Is Built */}
+
+          <Card className="bg-slate-800 border-slate-700 mb-8">
+
+            <CardHeader>
+
+              <CardTitle className="flex items-center text-white">
+
+                <Zap className="w-6 h-6 mr-3 text-purple-500" />
+
+                How SCRE Is Built
+
+              </CardTitle>
+
+            </CardHeader>
+
+            <CardContent>
+
+              <p className="text-slate-300 leading-relaxed mb-4">SCRE is designed as a decision-support system using:</p>
+
+
+
+              <ul className="space-y-2 text-slate-300">
+
+                <li className="flex items-start">
+
+                  <span className="text-blue-500 mr-2">*</span>
+
+                  Behavioral attitude inputs
+
+                </li>
+
+                <li className="flex items-start">
+
+                  <span className="text-blue-500 mr-2">*</span>
+
+                  Skill-specific learning demand models
+
+                </li>
+
+                <li className="flex items-start">
+
+                  <span className="text-blue-500 mr-2">*</span>
+
+                  Simple, explainable risk logic
+
+                </li>
+
+              </ul>
+
+
+
+              <p className="text-slate-300 leading-relaxed mt-4">
+
+                The system prioritizes clarity and interpretability over complex predictions.
+
+              </p>
+
+            </CardContent>
+
+          </Card>
+
+
+
+          {/* Current Stage */}
+
+          <Card className="bg-slate-800 border-slate-700 mb-8">
+
+            <CardHeader>
+
+              <CardTitle className="flex items-center text-white">
+
+                <BookOpen className="w-6 h-6 mr-3 text-green-500" />
+
+                Current Stage
+
+              </CardTitle>
+
+            </CardHeader>
+
+            <CardContent>
+
+              <p className="text-slate-300 leading-relaxed mb-4">SCRE is currently an MVP focused on:</p>
+
+
+
+              <ul className="space-y-2 text-slate-300">
+
+                <li className="flex items-start">
+
+                  <span className="text-green-500 mr-2">*</span>
+
+                  Testing the core risk framework
+
+                </li>
+
+                <li className="flex items-start">
+
+                  <span className="text-green-500 mr-2">*</span>
+
+                  Refining behavioral questions
+
+                </li>
+
+                <li className="flex items-start">
+
+                  <span className="text-green-500 mr-2">*</span>
+
+                  Improving explainability of results
+
+                </li>
+
+              </ul>
+
+            </CardContent>
+
+          </Card>
+
+
+
+          {/* Responsible Use */}
+
+          <Card className="bg-slate-800 border-slate-700 mb-8">
+
+            <CardHeader>
+
+              <CardTitle className="flex items-center text-white">
+
+                <Shield className="w-6 h-6 mr-3 text-amber-500" />
+
+                Responsible Use
+
+              </CardTitle>
+
+            </CardHeader>
+
+            <CardContent>
+
+              <p className="text-slate-300 leading-relaxed">
+
+                SCRE is intended to support reflection and decision-making. It should not be used to label, rank, or
+
+                exclude individuals.
+
+              </p>
+
+            </CardContent>
+
+          </Card>
+
+
+
+          <div className="text-center p-6 bg-blue-900/20 border border-blue-800 rounded-lg">
+
+            <p className="text-slate-300 text-lg">
+
+              SCRE is an early tool built to encourage informed learning choices, not to decide outcomes.
+
+            </p>
+
+          </div>
+
+        </motion.div>
+
+
+
+        {/* Founders Section */}
+
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}>
+
+          <h2 className="text-3xl font-bold text-white mb-8 text-center">Meet the Founders</h2>
+
+
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+
+            {founders.map((founder, index) => (
+
+              <Card
+
+                key={index}
+
+                className="bg-slate-800 border-slate-700 hover:border-blue-600 transition-all duration-300"
+
+              >
+
+                <CardContent className="p-8">
+
+                  <div className="flex flex-col items-center text-center mb-6">
+
+                    <div
+
+                      className={`w-20 h-20 mb-4 bg-gradient-to-br ${founder.color} rounded-full flex items-center justify-center text-white font-bold text-xl`}
+
+                      aria-label={`${founder.name} initials`}
+
+                    >
+
+                      {(founder.name || "")
+
+                        .split(" ")
+
+                        .filter(Boolean)
+
+                        .map((w) => w[0])
+
+                        .join("")}
+
+                    </div>
+
+
+
+                    <h3 className="text-2xl font-bold text-white mb-1">{founder.name}</h3>
+
+
+
+                    <p className="text-blue-400 font-medium mb-2">{founder.role}</p>
+
+
+
+                    <p className="text-sm text-slate-400">{founder.grade}</p>
+
+                  </div>
+
+
+
+                  <div className="mb-6">
+
+                    <div className="flex items-center justify-center mb-3">
+
+                      <founder.icon className="w-6 h-6 text-blue-400 mr-2" />
+
+                      <span className="text-blue-300 font-semibold">{founder.specialty}</span>
+
+                    </div>
+
+
+
+                    <p className="text-slate-300 leading-relaxed text-center mb-6">{founder.description}</p>
+
+                  </div>
+
+
+
+                  <div>
+
+                    <h4 className="text-white font-semibold mb-3 text-center">Key Skills</h4>
+
+
+
+                    <div className="flex flex-wrap gap-2 justify-center">
+
+                      {founder.skills.map((skill, idx) => (
+
+                        <span
+
+                          key={idx}
+
+                          className="px-3 py-1 bg-blue-900/50 text-blue-300 rounded-full text-sm border border-blue-700"
+
+                        >
+
+                          {skill}
+
+                        </span>
+
+                      ))}
+
+                    </div>
+
+                  </div>
+
+                </CardContent>
+
+              </Card>
+
+            ))}
+
+          </div>
+
+        </motion.div>
+
+
+
+        {/* CTA */}
+
+        <div className="text-center mt-16">
+
+          <Link to={createPageUrl("Home")}>
+
+            <Button className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-6 text-lg">Back to Home</Button>
+
+          </Link>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  );
+
+}
