@@ -1,0 +1,77 @@
+
+{
+  "name": "Skill0ntology",
+  "type": "object",
+  "properties": {
+    "skill_name": {
+      "type": "string",
+      "description": "Name of the skill"
+    },
+    "category": {
+      "type": "string",
+      "description": "Skill category (e.g., Technical, Soft Skills, Domain)"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed skill description"
+    },
+    "proficiency_levels": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Proficiency levels for this skill"
+    },
+    "related_skills": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Related or complementary skills"
+    },
+    "prerequisites": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Prerequisite skills"
+    },
+    "market_demand": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "very_high"],
+      "description": "Current market demand"
+    },
+    "difficulty_level": {
+      "type": "string",
+      "enum": ["beginner", "intermediate", "advanced", "expert"],
+      "description": "Difficulty level to acquire"
+    },
+    "industry_certifications": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Relevant industry certifications"
+    },
+    "required_tools": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Tools and software required"
+    },
+    "common_job_roles": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Common job roles that require this skill"
+    },
+    "emerging_trend": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this is an emerging skill trend"
+    },
+    "ai_suggested": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this skill was suggested by AI"
+    }
+  },
+  "required": ["skill_name", "category", "description"]
+}
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+Notes on corrections applied (syntax-only):
+• Re-attached misplaced `type`/`description` attributes into their proper property objects.
+• Fixed broken `enum` arrays where stray `1,` / `1.` appeared instead of closing brackets.
+• Added missing commas and braces to restore standard JSON object/array structure.
+• Preserved original top-level `name` value: "Skill0ntology" (no renames).
