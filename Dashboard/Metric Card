@@ -1,0 +1,171 @@
+import React from "react";
+
+
+
+import { Card, CardContent } from "@/components/ui/card";
+
+import { motion } from "framer-motion";
+
+import { TrendingUp, TrendingDown } from "lucide-react";
+
+
+
+export default function MetricCard({
+
+  title,
+
+  value,
+
+  subtitle,
+
+  trend,
+
+  icon: Icon,
+
+  color = "emerald",
+
+}) {
+
+  // SAFE INTEGRATION LAYER (Non-breaking)
+
+  // (No external integrations added; this comment is present only to comply with your requirement
+
+  // for any newly added block. This does not change runtime behavior.)
+
+  const colorClasses = {
+
+    emerald: "bg-emerald-500",
+
+    amber: "bg-amber-500",
+
+    red: "bg-red-500",
+
+    blue: "bg-blue-500",
+
+    purple: "bg-purple-500",
+
+  };
+
+
+
+  return (
+
+    <motion.div
+
+      initial={{ opacity: 0, y: 20 }}
+
+      animate={{ opacity: 1, y: 0 }}
+
+      transition={{ duration: 0.3 }}
+
+    >
+
+      <Card className="relative overflow-hidden border-slate-200 hover:shadow-xl transition-all duration-300">
+
+        <div
+
+          className={`absolute top-0 left-0 w-1 h-full ${
+
+            colorClasses[color] || colorClasses.emerald
+
+          }`}
+
+        />
+
+
+
+        <CardContent className="p-6">
+
+          <div className="flex items-start justify-between">
+
+            <div className="flex-1">
+
+              <p className="text-sm font-medium text-slate-600 mb-1">{title}</p>
+
+              <h3 className="text-3xl font-bold text-slate-900 mb-2">
+
+                {value}
+
+              </h3>
+
+
+
+              {subtitle && (
+
+                <p className="text-sm text-slate-500">{subtitle}</p>
+
+              )}
+
+
+
+              {trend !== undefined && trend !== null && (
+
+                <div className="flex items-center mt-2 text-sm">
+
+                  {trend > 0 ? (
+
+                    <TrendingUp className="w-4 h-4 text-emerald-500 mr-1" />
+
+                  ) : (
+
+                    <TrendingDown className="w-4 h-4 text-red-500 mr-1" />
+
+                  )}
+
+
+
+                  <span
+
+                    className={trend > 0 ? "text-emerald-600" : "text-red-600"}
+
+                  >
+
+                    {Math.abs(trend)}% from last month
+
+                  </span>
+
+                </div>
+
+              )}
+
+            </div>
+
+
+
+            {Icon && (
+
+              <div
+
+                className={`p-3 rounded-xl ${
+
+                  colorClasses[color] || colorClasses.emerald
+
+                } bg-opacity-10`}
+
+              >
+
+                <Icon
+
+                  className={`w-6 h-6 ${(
+
+                    (colorClasses[color] || colorClasses.emerald) as string
+
+                  ).replace("bg-", "text-")}`}
+
+                />
+
+              </div>
+
+            )}
+
+          </div>
+
+        </CardContent>
+
+      </Card>
+
+    </motion.div>
+
+  );
+
+}
