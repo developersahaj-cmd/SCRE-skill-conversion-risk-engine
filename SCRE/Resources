@@ -1,0 +1,1261 @@
+import React from 'react';
+
+
+
+import { motion } from 'framer-motion';
+
+import { BookOpen, ExternalLink, Star, TrendingUp } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+
+
+
+/**
+
+ * SCRE Resources component
+
+ * NOTE: This file preserves existing exports/UX/logic while fixing syntax issues.
+
+ * All optional integrations are isolated, lazy, and fail-safe.
+
+ */
+
+
+
+const resourceDatabase = {
+
+  coding: [
+
+    {
+
+      title: 'freeCodeCamp',
+
+      type: 'Platform',
+
+      url: 'https://freecodecamp.org',
+
+      rating: 4.8,
+
+      desc: 'Interactive coding curriculum with projects and certifications.',
+
+    },
+
+    {
+
+      title: 'The Odin Project',
+
+      type: 'Course',
+
+      url: 'https://theodinproject.com',
+
+      rating: 4.7,
+
+      desc: 'Full-stack curriculum with hands-on projects and community support.',
+
+    },
+
+    {
+
+      title: 'LeetCode',
+
+      type: 'Practice',
+
+      url: 'https://leetcode.com',
+
+      rating: 4.6,
+
+      desc: 'Coding challenges and interview practice for algorithms and data structures.',
+
+    },
+
+    {
+
+      title: 'MDN Web Docs',
+
+      type: 'Documentation',
+
+      url: 'https://developer.mozilla.org',
+
+      rating: 4.9,
+
+      desc: 'Comprehensive web development docs for HTML, CSS, JavaScript, and APIs.',
+
+    },
+
+  ],
+
+
+
+  data_science: [
+
+    {
+
+      title: 'Kaggle Learn',
+
+      type: 'Platform',
+
+      url: 'https://kaggle.com/learn',
+
+      rating: 4.7,
+
+      desc: 'Hands-on data science micro-courses with notebooks and exercises.',
+
+    },
+
+    {
+
+      title: 'DataCamp',
+
+      type: 'Platform',
+
+      url: 'https://datacamp.com',
+
+      rating: 4.5,
+
+      desc: 'Interactive data science and analytics learning paths.',
+
+    },
+
+    {
+
+      title: 'Fast.ai',
+
+      type: 'Course',
+
+      url: 'https://fast.ai',
+
+      rating: 4.8,
+
+      desc: 'Practical deep learning courses with a focus on real-world results.',
+
+    },
+
+    {
+
+      title: 'Towards Data Science',
+
+      type: 'Resource',
+
+      url: 'https://towardsdatascience.com',
+
+      rating: 4.6,
+
+      desc: 'Articles and tutorials across ML, data engineering, and analytics.',
+
+    },
+
+  ],
+
+
+
+  creative_writing: [
+
+    {
+
+      title: 'MasterClass Writing',
+
+      type: 'Course',
+
+      url: 'https://masterclass.com',
+
+      rating: 4.7,
+
+      desc: 'Learn writing craft from accomplished authors and storytellers.',
+
+    },
+
+    {
+
+      title: 'Reedsy Learning',
+
+      type: 'Platform',
+
+      url: 'https://reedsy.com/learning',
+
+      rating: 4.6,
+
+      desc: 'Free writing courses and publishing guidance for authors.',
+
+    },
+
+    {
+
+      title: 'Writers Digest',
+
+      type: 'Resource',
+
+      url: 'https://writersdigest.com',
+
+      rating: 4.5,
+
+      desc: 'Writing tips, prompts, and publishing resources.',
+
+    },
+
+    {
+
+      title: 'Grammarly Blog',
+
+      type: 'Resource',
+
+      url: 'https://grammarly.com/blog',
+
+      rating: 4.4,
+
+      desc: 'Writing guides, style tips, and grammar resources.',
+
+    },
+
+  ],
+
+
+
+  design: [
+
+    {
+
+      title: 'Figma Learn',
+
+      type: 'Platform',
+
+      url: 'https://figma.com/resources/learn-design',
+
+      rating: 4.8,
+
+      desc: 'Design tutorials and best practices for UI/UX and collaboration.',
+
+    },
+
+    {
+
+      title: 'Interaction Design Foundation',
+
+      type: 'Platform',
+
+      url: 'https://interaction-design.org',
+
+      rating: 4.7,
+
+      desc: 'UX and interaction design courses with structured learning tracks.',
+
+    },
+
+    {
+
+      title: 'Dribbble',
+
+      type: 'Community',
+
+      url: 'https://dribbble.com',
+
+      rating: 4.5,
+
+      desc: 'Design inspiration and community portfolios.',
+
+    },
+
+    {
+
+      title: 'Refactoring UI',
+
+      type: 'Course',
+
+      url: 'https://refactoringui.com',
+
+      rating: 4.9,
+
+      desc: 'Learn visually pleasing UI design through practical examples.',
+
+    },
+
+  ],
+
+
+
+  marketing: [
+
+    {
+
+      title: 'HubSpot Academy',
+
+      type: 'Platform',
+
+      url: 'https://academy.hubspot.com',
+
+      rating: 4.7,
+
+      desc: 'Free marketing courses with certifications across inbound and growth.',
+
+    },
+
+    {
+
+      title: 'Google Digital Garage',
+
+      type: 'Platform',
+
+      url: 'https://learndigital.withgoogle.com',
+
+      rating: 4.6,
+
+      desc: 'Digital marketing fundamentals and certification courses.',
+
+    },
+
+    {
+
+      title: "Seth Godin Blog",
+
+      type: 'Resource',
+
+      url: 'https://seths.blog',
+
+      rating: 4.8,
+
+      desc: 'Marketing insights and strategy essays.',
+
+    },
+
+    {
+
+      title: 'Moz SEO Learning Center',
+
+      type: 'Resource',
+
+      url: 'https://moz.com/learn/seo',
+
+      rating: 4.5,
+
+      desc: 'SEO learning resources, guides, and practical checklists.',
+
+    },
+
+  ],
+
+
+
+  public_speaking: [
+
+    {
+
+      title: 'Toastmasters International',
+
+      type: 'Community',
+
+      url: 'https://toastmasters.org',
+
+      rating: 4.8,
+
+      desc: 'Community-based practice and structured speaking pathways.',
+
+    },
+
+    {
+
+      title: 'TED Masterclass',
+
+      type: 'Course',
+
+      url: 'https://ted.com/participate/ted-masterclass',
+
+      rating: 4.7,
+
+      desc: 'Structured guidance for shaping and delivering a compelling talk.',
+
+    },
+
+    {
+
+      title: 'Coursera Public Speaking',
+
+      type: 'Course',
+
+      url: 'https://coursera.org',
+
+      rating: 4.5,
+
+      desc: 'University-led public speaking and communication courses.',
+
+    },
+
+    {
+
+      title: 'The Art of Public Speaking',
+
+      type: 'Book',
+
+      url: '#',
+
+      rating: 4.6,
+
+      desc: 'Classic public speaking fundamentals and techniques.',
+
+    },
+
+  ],
+
+
+
+  photography: [
+
+    {
+
+      title: 'Digital Photography School',
+
+      type: 'Platform',
+
+      url: 'https://digital-photography-school.com',
+
+      rating: 4.6,
+
+      desc: 'Photography tutorials, tips, and beginner-to-advanced guides.',
+
+    },
+
+    {
+
+      title: 'B&H Photo Video Explora',
+
+      type: 'Resource',
+
+      url: 'https://bhphotovideo.com/explora',
+
+      rating: 4.5,
+
+      desc: 'Photography and videography learning articles and gear explainers.',
+
+    },
+
+    {
+
+      title: 'Fstoppers',
+
+      type: 'Community',
+
+      url: 'https://fstoppers.com',
+
+      rating: 4.4,
+
+      desc: 'Photography news, tutorials, and community critiques.',
+
+    },
+
+    {
+
+      title: 'Lightroom Queen',
+
+      type: 'Resource',
+
+      url: 'https://lightroomqueen.com',
+
+      rating: 4.7,
+
+      desc: 'Photo editing guides and Lightroom workflow resources.',
+
+    },
+
+  ],
+
+
+
+  video_editing: [
+
+    {
+
+      title: 'Premiere Pro Tutorials',
+
+      type: 'Platform',
+
+      url: 'https://adobe.com/products/premiere/learn.html',
+
+      rating: 4.6,
+
+      desc: 'Official tutorials for Adobe Premiere Pro editing workflows.',
+
+    },
+
+    {
+
+      title: 'Film Riot',
+
+      type: 'YouTube',
+
+      url: 'https://youtube.com/filmriot',
+
+      rating: 4.7,
+
+      desc: 'Filmmaking and editing techniques with practical demonstrations.',
+
+    },
+
+    {
+
+      title: 'PremiumBeat Blog',
+
+      type: 'Resource',
+
+      url: 'https://premiumbeat.com/blog',
+
+      rating: 4.5,
+
+      desc: 'Video editing tips, templates, and post-production guides.',
+
+    },
+
+    {
+
+      title: 'Final Cut Pro X Course',
+
+      type: 'Course',
+
+      url: 'https://apple.com/final-cut-pro',
+
+      rating: 4.6,
+
+      desc: 'Official resources for Final Cut Pro workflows and features.',
+
+    },
+
+  ],
+
+
+
+  music_production: [
+
+    {
+
+      title: 'Ableton Learning',
+
+      type: 'Platform',
+
+      url: 'https://ableton.com/en/live/learn-live',
+
+      rating: 4.8,
+
+      desc: 'Official Ableton Live learning materials and tutorials.',
+
+    },
+
+    {
+
+      title: 'Syntorial',
+
+      type: 'Course',
+
+      url: 'https://syntorial.com',
+
+      rating: 4.7,
+
+      desc: 'Synthesizer sound design training with hands-on ear development.',
+
+    },
+
+    {
+
+      title: 'Sound On Sound',
+
+      type: 'Resource',
+
+      url: 'https://soundonsound.com',
+
+      rating: 4.6,
+
+      desc: 'Music tech reviews and production tutorials.',
+
+    },
+
+    {
+
+      title: "Pensado's Place",
+
+      type: 'YouTube',
+
+      url: '#',
+
+      rating: 4.5,
+
+      desc: 'Mixing and audio production tips from industry professionals.',
+
+    },
+
+  ],
+
+
+
+  teaching: [
+
+    {
+
+      title: 'Teach For America',
+
+      type: 'Program',
+
+      url: 'https://teachforamerica.org',
+
+      rating: 4.6,
+
+      desc: 'Teacher development program and classroom impact pathways.',
+
+    },
+
+    {
+
+      title: 'Edutopia',
+
+      type: 'Resource',
+
+      url: 'https://edutopia.org',
+
+      rating: 4.7,
+
+      desc: 'Teaching strategies and research-backed classroom practices.',
+
+    },
+
+    {
+
+      title: 'Khan Academy Educator Resources',
+
+      type: 'Platform',
+
+      url: 'https://khanacademy.org/coach-res',
+
+      rating: 4.6,
+
+      desc: 'Resources for educators to support learners and track progress.',
+
+    },
+
+    {
+
+      title: 'ASCD',
+
+      type: 'Community',
+
+      url: 'https://ascd.org',
+
+      rating: 4.4,
+
+      desc: 'Educational leadership resources and professional development.',
+
+    },
+
+  ],
+
+
+
+  entrepreneurship: [
+
+    {
+
+      title: 'Y Combinator Startup School',
+
+      type: 'Course',
+
+      url: 'https://startupschool.org',
+
+      rating: 4.9,
+
+      desc: 'Startup fundamentals, mentorship, and structured advice.',
+
+    },
+
+    {
+
+      title: 'Lean Startup',
+
+      type: 'Methodology',
+
+      url: 'https://theleanstartup.com',
+
+      rating: 4.8,
+
+      desc: 'Build-measure-learn methods and iterative product development.',
+
+    },
+
+    {
+
+      title: 'Product Hunt',
+
+      type: 'Community',
+
+      url: 'https://producthunt.com',
+
+      rating: 4.6,
+
+      desc: 'Launch and discover new products; learn go-to-market patterns.',
+
+    },
+
+    {
+
+      title: 'Indie Hackers',
+
+      type: 'Community',
+
+      url: 'https://indiehackers.com',
+
+      rating: 4.7,
+
+      desc: 'Solo founder stories, tactics, and community discussions.',
+
+    },
+
+  ],
+
+
+
+  product_management: [
+
+    {
+
+      title: 'Product School',
+
+      type: 'Platform',
+
+      url: 'https://productschool.com',
+
+      rating: 4.7,
+
+      desc: 'PM courses and certifications for different experience levels.',
+
+    },
+
+    {
+
+      title: 'Mind the Product',
+
+      type: 'Community',
+
+      url: 'https://mindtheproduct.com',
+
+      rating: 4.6,
+
+      desc: 'PM community resources, events, and articles.',
+
+    },
+
+    {
+
+      title: "Lenny's Newsletter",
+
+      type: 'Resource',
+
+      url: 'https://lennysnewsletter.com',
+
+      rating: 4.8,
+
+      desc: 'Product growth, strategy, and career insights.',
+
+    },
+
+    {
+
+      title: 'Reforge',
+
+      type: 'Platform',
+
+      url: 'https://reforge.com',
+
+      rating: 4.7,
+
+      desc: 'Advanced product and growth programs for experienced operators.',
+
+    },
+
+  ],
+
+
+
+  custom: [
+
+    {
+
+      title: 'Coursera',
+
+      type: 'Platform',
+
+      url: 'https://coursera.org',
+
+      rating: 4.6,
+
+      desc: 'University courses and professional certificates.',
+
+    },
+
+    {
+
+      title: 'edX',
+
+      type: 'Platform',
+
+      url: 'https://edx.org',
+
+      rating: 4.5,
+
+      desc: 'Free courses and programs from top universities.',
+
+    },
+
+    {
+
+      title: 'Udemy',
+
+      type: 'Platform',
+
+      url: 'https://udemy.com',
+
+      rating: 4.4,
+
+      desc: 'Affordable courses on a wide range of topics.',
+
+    },
+
+    {
+
+      title: 'YouTube Learning',
+
+      type: 'Platform',
+
+      url: 'https://youtube.com',
+
+      rating: 4.7,
+
+      desc: 'Free video tutorials across nearly every skill area.',
+
+    },
+
+  ],
+
+};
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+// Feature flags are optional and guarded. Defaults to OFF.
+
+function getSCREFlags() {
+
+  try {
+
+    const fromGlobal =
+
+      typeof globalThis !== 'undefined' && globalThis && globalThis.__SCRE_FLAGS__ ? globalThis.__SCRE_FLAGS__ : null;
+
+
+
+    const fromProcess =
+
+      typeof process !== 'undefined' && process && process.env ? process.env : null;
+
+
+
+    // Least-invasive merge: globals override env, but both are optional.
+
+    return {
+
+      firebaseAuthEnabled: !!(fromGlobal && fromGlobal.firebaseAuthEnabled) || !!(fromProcess && fromProcess.SCRE_FIREBASE_AUTH === 'true'),
+
+      geminiInsightsEnabled: !!(fromGlobal && fromGlobal.geminiInsightsEnabled) || !!(fromProcess && fromProcess.SCRE_GEMINI_INSIGHTS === 'true'),
+
+      bigqueryLoggingEnabled: !!(fromGlobal && fromGlobal.bigqueryLoggingEnabled) || !!(fromProcess && fromProcess.SCRE_BIGQUERY_LOGGING === 'true'),
+
+      vertexInferenceEnabled: !!(fromGlobal && fromGlobal.vertexInferenceEnabled) || !!(fromProcess && fromProcess.SCRE_VERTEX_INFERENCE === 'true'),
+
+      vertexExplainEnabled: !!(fromGlobal && fromGlobal.vertexExplainEnabled) || !!(fromProcess && fromProcess.SCRE_VERTEX_EXPLAIN === 'true'),
+
+    };
+
+  } catch (e) {
+
+    return {
+
+      firebaseAuthEnabled: false,
+
+      geminiInsightsEnabled: false,
+
+      bigqueryLoggingEnabled: false,
+
+      vertexInferenceEnabled: false,
+
+      vertexExplainEnabled: false,
+
+    };
+
+  }
+
+}
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+// No-op + lazy loaders. Never throw; never block render.
+
+const SCREIntegrations = (() => {
+
+  const flags = getSCREFlags();
+
+
+
+  const noop = {
+
+    init: async () => {},
+
+    logEvent: async () => {},
+
+    getInsight: async () => null,
+
+    infer: async () => null,
+
+    explain: async () => null,
+
+  };
+
+
+
+  // SAFE INTEGRATION LAYER (Non-breaking)
+
+  async function lazyImport(moduleName) {
+
+    try {
+
+      // Intentionally dynamic and guarded. If bundler or module missing, return null.
+
+      return await import(/* webpackIgnore: true */ moduleName);
+
+    } catch (e) {
+
+      return null;
+
+    }
+
+  }
+
+
+
+  // SAFE INTEGRATION LAYER (Non-breaking)
+
+  async function getBigQueryLogger() {
+
+    if (!flags.bigqueryLoggingEnabled) return noop;
+
+
+
+    try {
+
+      // You may replace this module path with your internal adapter at build-time.
+
+      // Keeping it optional ensures backward compatibility.
+
+      const mod = await lazyImport('scre/bigqueryLogger');
+
+      return mod && mod.default ? mod.default : noop;
+
+    } catch (e) {
+
+      return noop;
+
+    }
+
+  }
+
+
+
+  // SAFE INTEGRATION LAYER (Non-breaking)
+
+  async function getGeminiInsights() {
+
+    if (!flags.geminiInsightsEnabled) return noop;
+
+
+
+    try {
+
+      const mod = await lazyImport('scre/geminiInsights');
+
+      return mod && mod.default ? mod.default : noop;
+
+    } catch (e) {
+
+      return noop;
+
+    }
+
+  }
+
+
+
+  // SAFE INTEGRATION LAYER (Non-breaking)
+
+  async function getVertexInference() {
+
+    if (!flags.vertexInferenceEnabled) return noop;
+
+
+
+    try {
+
+      const mod = await lazyImport('scre/vertexInference');
+
+      return mod && mod.default ? mod.default : noop;
+
+    } catch (e) {
+
+      return noop;
+
+    }
+
+  }
+
+
+
+  // SAFE INTEGRATION LAYER (Non-breaking)
+
+  async function getVertexExplain() {
+
+    if (!flags.vertexExplainEnabled) return noop;
+
+
+
+    try {
+
+      const mod = await lazyImport('scre/vertexExplain');
+
+      return mod && mod.default ? mod.default : noop;
+
+    } catch (e) {
+
+      return noop;
+
+    }
+
+  }
+
+
+
+  // SAFE INTEGRATION LAYER (Non-breaking)
+
+  async function getFirebaseAuth() {
+
+    if (!flags.firebaseAuthEnabled) return noop;
+
+
+
+    try {
+
+      const mod = await lazyImport('scre/firebaseAuth');
+
+      return mod && mod.default ? mod.default : noop;
+
+    } catch (e) {
+
+      return noop;
+
+    }
+
+  }
+
+
+
+  return {
+
+    flags,
+
+    getBigQueryLogger,
+
+    getGeminiInsights,
+
+    getVertexInference,
+
+    getVertexExplain,
+
+    getFirebaseAuth,
+
+  };
+
+})();
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+// Fire-and-forget logging that never blocks navigation.
+
+async function safeLogResourceClick(payload) {
+
+  try {
+
+    const logger = await SCREIntegrations.getBigQueryLogger();
+
+    // best-effort, async
+
+    await logger.logEvent?.('resource_click', payload);
+
+  } catch (e) {
+
+    // intentionally swallow errors
+
+  }
+
+}
+
+
+
+export default function Resources({ skill }) {
+
+  const resources = resourceDatabase[skill.id] || resourceDatabase.custom;
+
+
+
+  return (
+
+    <motion.div
+
+      initial={{ opacity: 0, y: 20 }}
+
+      animate={{ opacity: 1, y: 0 }}
+
+      className="bg-gradient-to-br from-slate-900/90 to-slate-900/70 border border-slate-800/60 rounded-3xl p-8"
+
+    >
+
+      <div className="flex items-center gap-3 mb-6">
+
+        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500/20 to-teal-500/20 flex items-center justify-center">
+
+          <BookOpen className="w-6 h-6 text-cyan-400" />
+
+        </div>
+
+        <div>
+
+          <h3 className="text-2xl font-bold text-white">Learning Resources</h3>
+
+          <p className="text-slate-400 text-sm">Curated for {skill.name}</p>
+
+        </div>
+
+      </div>
+
+
+
+      <div className="grid md:grid-cols-2 gap-4">
+
+        {resources.map((resource, idx) => (
+
+          <motion.a
+
+            key={idx}
+
+            href={resource.url}
+
+            target="_blank"
+
+            rel="noopener noreferrer"
+
+            initial={{ opacity: 0, y: 10 }}
+
+            animate={{ opacity: 1, y: 0 }}
+
+            transition={{ delay: idx * 0.05 }}
+
+            whileHover={{ y: -4, scale: 1.02 }}
+
+            className="group bg-slate-800/50 border border-slate-700 rounded-xl p-5 hover:border-cyan-500/50 transition-colors"
+
+            onClick={() => {
+
+              // SAFE INTEGRATION LAYER (Non-breaking)
+
+              // Non-blocking click logging (BigQuery) guarded by feature flag.
+
+              // Never prevents default navigation.
+
+              void safeLogResourceClick({
+
+                skillId: skill?.id,
+
+                skillName: skill?.name,
+
+                resourceTitle: resource?.title,
+
+                resourceType: resource?.type,
+
+                resourceUrl: resource?.url,
+
+                rating: resource?.rating,
+
+                ts: Date.now(),
+
+              });
+
+            }}
+
+          >
+
+            <div className="flex items-start justify-between mb-3">
+
+              <div>
+
+                <h4 className="text-white font-semibold group-hover:text-cyan-300 transition-colors">
+
+                  {resource.title}
+
+                </h4>
+
+                <span className="text-xs text-slate-500">{resource.type}</span>
+
+              </div>
+
+
+
+              <div className="flex items-center gap-1">
+
+                <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
+
+                <span className="text-xs text-slate-400">{resource.rating}</span>
+
+              </div>
+
+            </div>
+
+
+
+            <p className="text-sm text-slate-400 mb-3">{resource.desc}</p>
+
+            <div className="flex items-center gap-2 text-cyan-400 text-sm group-hover:gap-3 transition-all">
+
+              <span>Explore</span>
+
+              <ExternalLink className="w-3 h-3" />
+
+            </div>
+
+          </motion.a>
+
+        ))}
+
+      </div>
+
+
+
+      <div className="mt-6 pt-6 border-t border-slate-700">
+
+        <p className="text-slate-400 text-sm">
+
+          <TrendingUp className="w-4 h-4 inline mr-2 text-cyan-400" />
+
+          Resources are curated based on community ratings and industry relevance
+
+        </p>
+
+      </div>
+
+    </motion.div>
+
+  );
+
+}
