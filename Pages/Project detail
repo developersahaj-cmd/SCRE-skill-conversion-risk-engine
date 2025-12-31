@@ -1,0 +1,841 @@
+import React, { useState, useEffect } from "react";
+
+import { base44 } from "@/api/base44Client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+
+import AIAnalysisCard from "../components/ai/AIAnalysisCard";
+
+import {
+  Sparkles,
+  AlertTriangle,
+  Target,
+  Users,
+  Calendar,
+  ArrowLeft,
+  Loader2,
+} from "lucide-react";
+
+import { Link } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { format } from "date-fns";
+import { motion } from "framer-motion";
+
+/* ======================================================================
+   // SAFE INTEGRATION LAYER (Non-breaking)
+   Optional, isolated, fail-safe adapters for Firebase, Gemini, BigQuery,
+   Vertex AI, and Vertex Explainable AI.
+   - Lazy loaded (dynamic import)
+   - try/catch guarded
+   - feature-flagged
+   - no-op fallbacks
+   - no global side effects
+   ====================================================================== */
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+const getFeatureFlags = () => {
+  try {
+    // No assumptions about env vars. Allow opt-in flags via window or defaults.
+    const w =
+      typeof window !== "undefined" && window
+        ? window
+        : /** @type {any} */ ({});
+
+    const raw = w.__SCRE_FEATURES__ || {};
+    return {
+      firebaseAuthEnabled: Boolean(raw.firebaseAuthEnabled),
+      geminiInsightsEnabled: Boolean(raw.geminiInsightsEnabled),
+      bigQueryLoggingEnabled: Boolean(raw.bigQueryLoggingEnabled),
+      vertexInferenceEnabled: Boolean(raw.vertexInferenceEnabled),
+      vertexExplainEnabled: Boolean(raw.vertexExplainEnabled),
+    };
+  } catch {
+    return {
+      firebaseAuthEnabled: false,
+      geminiInsightsEnabled: false,
+      bigQueryLoggingEnabled: false,
+      vertexInferenceEnabled: false,
+      vertexExplainEnabled: false,
+    };
+  }
+};
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+const safeConsole = {
+  debug: (...args) => {
+    try {
+      // eslint-disable-next-line no-console
+      console.debug(...args);
+    } catch {}
+  },
+  warn: (...args) => {
+    try {
+      // eslint-disable-next-line no-console
+      console.warn(...args);
+    } catch {}
+  },
+  error: (...args) => {
+    try {
+      // eslint-disable-next-line no-console
+      console.error(...args);
+    } catch {}
+  },
+};
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+const createNoop = () => ({
+  enabled: false,
+  init: async () => {},
+  get: async () => null,
+  set: async () => {},
+  invoke: async () => null,
+  log: async () => {},
+});
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+const loadFirebaseAuthAdapter = async (flags) => {
+  if (!flags.firebaseAuthEnabled) return createNoop();
+  try {
+    // Lazy load Firebase only if present in the app bundle.
+    const firebase = await import("firebase/app");
+    const authMod = await import("firebase/auth");
+
+    // NOTE: No assumption about initialization config. If not initialized, noop.
+    const app = (() => {
+      try {
+        return firebase.getApp();
+      } catch {
+        return null;
+      }
+    })();
+
+    if (!app) return createNoop();
+
+    const auth = authMod.getAuth(app);
+
+    return {
+      enabled: true,
+      init: async () => {},
+      get: async () => {
+        try {
+          return auth.currentUser || null;
+        } catch {
+          return null;
+        }
+      },
+      set: async () => {},
+    };
+  } catch (e) {
+    safeConsole.warn("Firebase auth adapter unavailable:", e);
+    return createNoop();
+  }
+};
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+const loadGeminiInsightsAdapter = async (flags) => {
+  if (!flags.geminiInsightsEnabled) return createNoop();
+  try {
+    // Intentionally dynamic: Gemini SDK may not exist in the build.
+    // If it doesn't exist, we fallback to noop.
+    const mod = await import("@google/generative-ai");
+    const w =
+      typeof window !== "undefined" && window
+        ? window
+        : /** @type {any} */ ({});
+    const apiKey = w.__SCRE_GEMINI_API_KEY__; // Optional; do not assume present.
+    if (!apiKey) return createNoop();
+
+    const genAI = new mod.GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    return {
+      enabled: true,
+      invoke: async ({ prompt }) => {
+        try {
+          const res = await model.generateContent(prompt);
+          // Defensive parsing
+          const text =
+            res?.response?.text?.() ||
+            res?.response?.candidates?.[0]?.content?.parts?.[0]?.text ||
+            null;
+          return text;
+        } catch (e) {
+          safeConsole.warn("Gemini insight generation failed:", e);
+          return null;
+        }
+      },
+    };
+  } catch (e) {
+    safeConsole.warn("Gemini adapter unavailable:", e);
+    return createNoop();
+  }
+};
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+const loadBigQueryLogger = async (flags) => {
+  if (!flags.bigQueryLoggingEnabled) return createNoop();
+  try {
+    // Browser apps typically don't call BigQuery directly.
+    // This is an adapter stub for fire-and-forget logging through your backend.
+    // If no backend client exists, noop.
+    const w =
+      typeof window !== "undefined" && window
+        ? window
+        : /** @type {any} */ ({});
+    const endpoint = w.__SCRE_BQ_LOG_ENDPOINT__; // Optional
+    if (!endpoint) return createNoop();
+
+    return {
+      enabled: true,
+      log: async (event) => {
+        try {
+          // Fire-and-forget; never block UX.
+          void fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(event),
+          }).catch(() => {});
+        } catch {
+          // swallow
+        }
+      },
+    };
+  } catch (e) {
+    safeConsole.warn("BigQuery logger unavailable:", e);
+    return createNoop();
+  }
+};
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+const loadVertexInferenceAdapter = async (flags) => {
+  if (!flags.vertexInferenceEnabled) return createNoop();
+  try {
+    // Vertex inference must be behind an abstraction layer (usually backend).
+    const w =
+      typeof window !== "undefined" && window
+        ? window
+        : /** @type {any} */ ({});
+    const endpoint = w.__SCRE_VERTEX_INFER_ENDPOINT__; // Optional
+    if (!endpoint) return createNoop();
+
+    return {
+      enabled: true,
+      invoke: async (payload) => {
+        try {
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (!res.ok) return null;
+          return await res.json();
+        } catch (e) {
+          safeConsole.warn("Vertex inference failed:", e);
+          return null;
+        }
+      },
+    };
+  } catch (e) {
+    safeConsole.warn("Vertex adapter unavailable:", e);
+    return createNoop();
+  }
+};
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+const loadVertexExplainAdapter = async (flags) => {
+  if (!flags.vertexExplainEnabled) return createNoop();
+  try {
+    const w =
+      typeof window !== "undefined" && window
+        ? window
+        : /** @type {any} */ ({});
+    const endpoint = w.__SCRE_VERTEX_EXPLAIN_ENDPOINT__; // Optional
+    if (!endpoint) return createNoop();
+
+    return {
+      enabled: true,
+      invoke: async (payload) => {
+        try {
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (!res.ok) return null;
+          return await res.json();
+        } catch (e) {
+          safeConsole.warn("Vertex Explainable AI failed:", e);
+          return null;
+        }
+      },
+    };
+  } catch (e) {
+    safeConsole.warn("Vertex Explain adapter unavailable:", e);
+    return createNoop();
+  }
+};
+
+export default function ProjectDetail() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const projectId = urlParams.get("id");
+
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const queryClient = useQueryClient();
+
+  const { data: project, isLoading } = useQuery({
+    queryKey: ["project", projectId],
+    queryFn: async () => {
+      const projects = await base44.entities.SkillConversionProject.filter({
+        id: projectId,
+      });
+      return projects[0];
+    },
+    enabled: !!projectId,
+  });
+
+  const { data: riskFactors = [] } = useQuery({
+    queryKey: ["riskFactors", projectId],
+    queryFn: () => base44.entities.RiskFactor.filter({ project_id: projectId }),
+    enabled: !!projectId,
+  });
+
+  const { data: mitigationStrategies = [] } = useQuery({
+    queryKey: ["mitigationStrategies", projectId],
+    queryFn: () =>
+      base44.entities.MitigationStrategy.filter({ project_id: projectId }),
+    enabled: !!projectId,
+  });
+
+  const updateStrategyMutation = useMutation({
+    mutationFn: ({ id, data }) =>
+      base44.entities.MitigationStrategy.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["mitigationStrategies", projectId],
+      });
+    },
+  });
+
+  const runAIAnalysis = async () => {
+    setIsAnalyzing(true);
+
+    // SAFE INTEGRATION LAYER (Non-breaking)
+    const flags = getFeatureFlags();
+    const [firebaseAuth, gemini, bq, vertex, vertexExplain] = await Promise.all([
+      loadFirebaseAuthAdapter(flags),
+      loadGeminiInsightsAdapter(flags),
+      loadBigQueryLogger(flags),
+      loadVertexInferenceAdapter(flags),
+      loadVertexExplainAdapter(flags),
+    ]);
+
+    // SAFE INTEGRATION LAYER (Non-breaking)
+    try {
+      if (bq.enabled) {
+        await bq.log({
+          event: "scre_ai_analysis_started",
+          ts: Date.now(),
+          project_id: projectId,
+        });
+      }
+    } catch {
+      // swallow
+    }
+
+    try {
+      // Generate AI analysis for risk factors (existing behavior preserved)
+      const riskAnalysis = await base44.integrations.Core.InvokeLLM({
+        prompt: `Analyze this skill conversion project and identify 3-5 key risk factors:
+
+Project: ${project?.project_name || "N/A"}
+Source Skill: ${project?.source_skill || "N/A"}
+Target Skill: ${project?.target_skill || "N/A"}
+Department: ${project?.department || "N/A"}
+Employees: ${project?.employees_affected || 0}
+Description: ${project?.description || "N/A"}
+
+For each risk factor, provide:
+1. Category (technical, organizational, financial, resource, timeline, or adoption)
+2. Factor name (concise title)
+3. Description (2-3 sentences)
+4. Severity (low, medium, high, or critical)
+5. Impact score (0-100)
+6. Likelihood score (0-100)`,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            risk_factors: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  category: { type: "string" },
+                  factor_name: { type: "string" },
+                  description: { type: "string" },
+                  severity: { type: "string" },
+                  impact_score: { type: "number" },
+                  likelihood_score: { type: "number" },
+                },
+                required: [
+                  "category",
+                  "factor_name",
+                  "description",
+                  "severity",
+                  "impact_score",
+                  "likelihood_score",
+                ],
+              },
+            },
+          },
+          required: ["risk_factors"],
+        },
+      });
+
+      const safeRiskFactors = Array.isArray(riskAnalysis?.risk_factors)
+        ? riskAnalysis.risk_factors
+        : [];
+
+      // Create risk factors (existing behavior preserved)
+      for (const risk of safeRiskFactors) {
+        await base44.entities.RiskFactor.create({
+          project_id: projectId,
+          ...risk,
+          ai_generated: true,
+        });
+      }
+
+      // Generate mitigation strategies (existing behavior preserved)
+      const mitigationAnalysis = await base44.integrations.Core.InvokeLLM({
+        prompt: `Based on these risk factors for the skill conversion project, suggest 3-5 mitigation strategies:
+
+${safeRiskFactors
+  .map((r) => `${r.factor_name}: ${r.description}`)
+  .join("\n")}
+
+For each strategy, provide:
+1. Strategy name
+2. Description (actionable steps)
+3. Estimated cost (number, can be 0 if minimal)
+4. Estimated time (e.g., "2 weeks", "1 month")
+5. Effectiveness score (0-100)
+6. Priority (low, medium, high, or urgent)`,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            strategies: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  strategy_name: { type: "string" },
+                  description: { type: "string" },
+                  estimated_cost: { type: "number" },
+                  estimated_time: { type: "string" },
+                  effectiveness_score: { type: "number" },
+                  priority: { type: "string" },
+                },
+                required: [
+                  "strategy_name",
+                  "description",
+                  "estimated_cost",
+                  "estimated_time",
+                  "effectiveness_score",
+                  "priority",
+                ],
+              },
+            },
+          },
+          required: ["strategies"],
+        },
+      });
+
+      const safeStrategies = Array.isArray(mitigationAnalysis?.strategies)
+        ? mitigationAnalysis.strategies
+        : [];
+
+      // Create mitigation strategies (existing behavior preserved)
+      for (const strategy of safeStrategies) {
+        await base44.entities.MitigationStrategy.create({
+          project_id: projectId,
+          ...strategy,
+          ai_generated: true,
+        });
+      }
+
+      // Calculate overall risk score (existing behavior preserved)
+      const avgRiskScore = Math.round(
+        safeRiskFactors.length > 0
+          ? safeRiskFactors.reduce(
+              (acc, r) =>
+                acc + (Number(r.impact_score) * Number(r.likelihood_score)) / 100,
+              0
+            ) / safeRiskFactors.length
+          : 0
+      );
+
+      // SAFE INTEGRATION LAYER (Non-breaking)
+      // Optional Vertex inference: only if enabled, and never required.
+      let finalRiskScore = avgRiskScore;
+      try {
+        if (vertex.enabled) {
+          const vertexRes = await vertex.invoke({
+            project_id: projectId,
+            project,
+            risk_factors: safeRiskFactors,
+            baseline_risk_score: avgRiskScore,
+          });
+
+          const maybeScore =
+            typeof vertexRes?.risk_score === "number"
+              ? vertexRes.risk_score
+              : null;
+
+          if (typeof maybeScore === "number" && !Number.isNaN(maybeScore)) {
+            finalRiskScore = Math.round(Math.max(0, Math.min(100, maybeScore)));
+          }
+        }
+      } catch {
+        // fallback to avgRiskScore
+        finalRiskScore = avgRiskScore;
+      }
+
+      const riskLevel =
+        finalRiskScore > 75
+          ? "critical"
+          : finalRiskScore > 50
+          ? "high"
+          : finalRiskScore > 25
+          ? "medium"
+          : "low";
+
+      // Update project (existing behavior preserved)
+      await base44.entities.SkillConversionProject.update(projectId, {
+        ai_analysis_completed: true,
+        risk_score: finalRiskScore,
+        risk_level: riskLevel,
+      });
+
+      // SAFE INTEGRATION LAYER (Non-breaking)
+      // Optional Vertex Explainable AI enrichment (non-blocking, ignored if unavailable).
+      try {
+        if (vertexExplain.enabled) {
+          void vertexExplain
+            .invoke({
+              project_id: projectId,
+              project,
+              risk_factors: safeRiskFactors,
+              risk_score: finalRiskScore,
+            })
+            .then((explainRes) => {
+              safeConsole.debug("Vertex Explain enrichment:", explainRes);
+            })
+            .catch(() => {});
+        }
+      } catch {
+        // swallow
+      }
+
+      // SAFE INTEGRATION LAYER (Non-breaking)
+      // Optional Gemini insights generation (non-blocking; does not affect SCRE output).
+      try {
+        if (gemini.enabled) {
+          void gemini
+            .invoke({
+              prompt: `Generate short, neutral, non-prescriptive insights explaining why the risk may be ${riskLevel} for this skill conversion project.
+Return 3 bullet points max. Do NOT give advice; only explain risk visibility.`,
+            })
+            .then((text) => {
+              safeConsole.debug("Gemini insights:", text);
+            })
+            .catch(() => {});
+        }
+      } catch {
+        // swallow
+      }
+
+      // SAFE INTEGRATION LAYER (Non-breaking)
+      // Optional Firebase user profile persistence (non-blocking).
+      try {
+        if (firebaseAuth.enabled) {
+          void firebaseAuth
+            .get()
+            .then((user) => {
+              safeConsole.debug("Firebase currentUser:", user?.uid || null);
+            })
+            .catch(() => {});
+        }
+      } catch {
+        // swallow
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["project", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["riskFactors", projectId] });
+      queryClient.invalidateQueries({
+        queryKey: ["mitigationStrategies", projectId],
+      });
+
+      // SAFE INTEGRATION LAYER (Non-breaking)
+      try {
+        if (bq.enabled) {
+          await bq.log({
+            event: "scre_ai_analysis_completed",
+            ts: Date.now(),
+            project_id: projectId,
+            risk_score: finalRiskScore,
+            risk_level: riskLevel,
+          });
+        }
+      } catch {
+        // swallow
+      }
+    } catch (error) {
+      safeConsole.error("AI Analysis failed:", error);
+
+      // SAFE INTEGRATION LAYER (Non-breaking)
+      try {
+        const flags = getFeatureFlags();
+        const bq = await loadBigQueryLogger(flags);
+        if (bq.enabled) {
+          await bq.log({
+            event: "scre_ai_analysis_failed",
+            ts: Date.now(),
+            project_id: projectId,
+            error: String(error?.message || error),
+          });
+        }
+      } catch {
+        // swallow
+      }
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  if (isLoading || !project) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
+        <div className="text-slate-600">Loading project...</div>
+      </div>
+    );
+  }
+
+  const riskColors = {
+    low: "bg-emerald-100 text-emerald-800",
+    medium: "bg-blue-100 text-blue-800",
+    high: "bg-amber-100 text-amber-800",
+    critical: "bg-red-100 text-red-800",
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div className="flex items-center space-x-2 mb-4">
+          <Link to={createPageUrl("Projects")}>
+            <Button variant="ghost">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to Projects
+            </Button>
+          </Link>
+
+          <span className="text-slate-400">*</span>
+
+          <Link to={createPageUrl("Home")}>
+            <Button variant="ghost">Back to Home</Button>
+          </Link>
+        </div>
+
+        {/* Project Header */}
+        <Card className="border-slate-200">
+          <CardHeader>
+            <div className="flex items-start justify-between">
+              <div>
+                <CardTitle className="text-2xl font-bold text-slate-900 mb-3">
+                  {project.project_name}
+                </CardTitle>
+
+                <div className="flex flex-wrap gap-2">
+                  <Badge className={riskColors[project.risk_level] || ""}>
+                    {project.risk_level} risk
+                  </Badge>
+                  <Badge variant="outline">{project.department}</Badge>
+                  <Badge variant="outline">
+                    {String(project.status || "").replace("_", " ")}
+                  </Badge>
+                </div>
+              </div>
+
+              <Button
+                onClick={runAIAnalysis}
+                disabled={isAnalyzing || project.ai_analysis_completed}
+                className="bg-purple-600 hover:bg-purple-700 text-white"
+              >
+                {isAnalyzing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    {project.ai_analysis_completed
+                      ? "Analysis Complete"
+                      : "Run AI Analysis"}
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardHeader>
+
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="flex items-center space-x-3">
+                <Target className="w-5 h-5 text-slate-400" />
+                <div>
+                  <p className="text-sm text-slate-600">Conversion</p>
+                  <p className="font-medium text-slate-900">
+                    {project.source_skill} → {project.target_skill}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-3">
+                <Users className="w-5 h-5 text-slate-400" />
+                <div>
+                  <p className="text-sm text-slate-600">Employees Affected</p>
+                  <p className="font-medium text-slate-900">
+                    {project.employees_affected || 0}
+                  </p>
+                </div>
+              </div>
+
+              {project.target_completion_date && (
+                <div className="flex items-center space-x-3">
+                  <Calendar className="w-5 h-5 text-slate-400" />
+                  <div>
+                    <p className="text-sm text-slate-600">Target Date</p>
+                    <p className="font-medium text-slate-900">
+                      {format(
+                        new Date(project.target_completion_date),
+                        "MMM d, yyyy"
+                      )}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {project.description && (
+              <div className="mt-6 pt-6 border-t border-slate-100">
+                <p className="text-slate-700">{project.description}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Risk Factors */}
+        {riskFactors.length > 0 && (
+          <Card className="border-slate-200">
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <AlertTriangle className="w-5 h-5 mr-2 text-amber-600" />
+                Identified Risk Factors
+              </CardTitle>
+            </CardHeader>
+
+            <CardContent>
+              <div className="space-y-4">
+                {riskFactors.map((risk) => (
+                  <div
+                    key={risk.id}
+                    className="p-4 bg-slate-50 rounded-lg border border-slate-100"
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <h4 className="font-semibold text-slate-900">
+                            {risk.factor_name}
+                          </h4>
+                          <Badge
+                            className={riskColors[risk.severity] || ""}
+                            size="sm"
+                          >
+                            {risk.severity}
+                          </Badge>
+                          {risk.ai_generated && (
+                            <Badge variant="outline" size="sm">
+                              <Sparkles className="w-3 h-3 mr-1" />
+                              AI
+                            </Badge>
+                          )}
+                        </div>
+
+                        <p className="text-sm text-slate-600 mb-2">
+                          {risk.description}
+                        </p>
+
+                        <div className="flex items-center space-x-4 text-xs text-slate-500">
+                          <span>Impact: {risk.impact_score}/100</span>
+                          <span>Likelihood: {risk.likelihood_score}/100</span>
+                          <Badge variant="outline" size="sm">
+                            {risk.category}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Mitigation Strategies */}
+        {mitigationStrategies.length > 0 && (
+          <Card className="border-slate-200">
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Sparkles className="w-5 h-5 mr-2 text-purple-600" />
+                AI-Suggested Mitigation Strategies
+              </CardTitle>
+            </CardHeader>
+
+            <CardContent>
+              <div className="space-y-4">
+                {mitigationStrategies.map((strategy) => (
+                  <AIAnalysisCard
+                    key={strategy.id}
+                    title={strategy.strategy_name}
+                    content={`${strategy.description}
+Estimated time: ${strategy.estimated_time}
+Estimated cost: ${strategy.estimated_cost}
+Effectiveness: ${strategy.effectiveness_score}/100
+Priority: ${strategy.priority}`}
+                    confidence={strategy.effectiveness_score}
+                    status={strategy.status}
+                    onAccept={() =>
+                      updateStrategyMutation.mutate({
+                        id: strategy.id,
+                        data: { status: "approved" },
+                      })
+                    }
+                    onReject={() =>
+                      updateStrategyMutation.mutate({
+                        id: strategy.id,
+                        data: { status: "rejected" },
+                      })
+                    }
+                    onModify={() => {}}
+                    showActions={strategy.status === "suggested"}
+                  />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
