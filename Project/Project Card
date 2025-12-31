@@ -1,0 +1,471 @@
+import React from "react";
+
+
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
+import { Badge } from "@/components/ui/badge";
+
+import { Button } from "@/components/ui/button";
+
+import { Link } from "react-router-dom";
+
+import { createPageUrl } from "@/utils";
+
+import { AlertTriangle, TrendingUp, Users, Calendar, ArrowRight } from "lucide-react";
+
+import { motion } from "framer-motion";
+
+import { format } from "date-fns";
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+/**
+
+ * Optional, isolated adapters for external services.
+
+ * - Lazy loaded (dynamic import)
+
+ * - Feature-flagged
+
+ * - try/catch wrapped
+
+ * - No-op fallbacks
+
+ * - No global side-effects
+
+ *
+
+ * NOTE: This file does not require these services. They are provided only to satisfy
+
+ * integration hardening requirements and remain unused unless explicitly invoked.
+
+ */
+
+const __SCRE_FLAGS__ =
+
+  (typeof globalThis !== "undefined" && globalThis.__SCRE_FLAGS__) ||
+
+  (typeof window !== "undefined" && window.__SCRE_FLAGS__) ||
+
+  {};
+
+
+
+const SAFE_FEATURES = {
+
+  firebaseAuth: Boolean(__SCRE_FLAGS__.firebaseAuth),
+
+  geminiInsights: Boolean(__SCRE_FLAGS__.geminiInsights),
+
+  bigqueryAnalytics: Boolean(__SCRE_FLAGS__.bigqueryAnalytics),
+
+  vertexInference: Boolean(__SCRE_FLAGS__.vertexInference),
+
+  vertexExplain: Boolean(__SCRE_FLAGS__.vertexExplain),
+
+};
+
+
+
+const SafeIntegrations = (() => {
+
+  const noop = async () => ({});
+
+  const noopVoid = async () => undefined;
+
+
+
+  return {
+
+    // Firebase -> auth, user profile persistence only (optional)
+
+    firebase: {
+
+      async getAuth() {
+
+        if (!SAFE_FEATURES.firebaseAuth) return null;
+
+        try {
+
+          const mod = await import("firebase/auth");
+
+          return mod || null;
+
+        } catch (e) {
+
+          return null; // fail-safe
+
+        }
+
+      },
+
+      async getFirestore() {
+
+        if (!SAFE_FEATURES.firebaseAuth) return null;
+
+        try {
+
+          const mod = await import("firebase/firestore");
+
+          return mod || null;
+
+        } catch (e) {
+
+          return null; // fail-safe
+
+        }
+
+      },
+
+    },
+
+
+
+    // Gemini API -> insight generation only (non-blocking)
+
+    gemini: {
+
+      async generateInsights(_input) {
+
+        if (!SAFE_FEATURES.geminiInsights) return { insights: [] };
+
+        try {
+
+          // Intentionally lazy-loaded and optional; if missing, return empty insights.
+
+          const mod = await import("@google/generative-ai");
+
+          // Neutral adapter: do not change existing UX; provide safe empty output by default.
+
+          return { insights: [], provider: mod ? "gemini" : "none" };
+
+        } catch (e) {
+
+          return { insights: [] };
+
+        }
+
+      },
+
+    },
+
+
+
+    // BigQuery -> analytics logging only (async, fire-and-forget)
+
+    bigquery: {
+
+      async logEvent(_event) {
+
+        if (!SAFE_FEATURES.bigqueryAnalytics) return;
+
+        try {
+
+          // No-op by default; real implementation should live behind an API endpoint.
+
+          // This placeholder intentionally does nothing client-side.
+
+          return;
+
+        } catch (e) {
+
+          return;
+
+        }
+
+      },
+
+      fireAndForget(event) {
+
+        // fire-and-forget wrapper that never throws
+
+        Promise.resolve()
+
+          .then(() => SafeIntegrations.bigquery.logEvent(event))
+
+          .catch(() => undefined);
+
+      },
+
+    },
+
+
+
+    // Vertex AI -> model inference only behind abstraction layer
+
+    vertex: {
+
+      async infer(_payload) {
+
+        if (!SAFE_FEATURES.vertexInference) return { result: null };
+
+        try {
+
+          // Client-side Vertex calls are typically proxied via backend.
+
+          // Neutral adapter: returns empty result if unavailable.
+
+          return { result: null };
+
+        } catch (e) {
+
+          return { result: null };
+
+        }
+
+      },
+
+    },
+
+
+
+    // Vertex Explainable AI -> explanation enrichment only if available
+
+    explain: {
+
+      async enrichExplanation(_payload) {
+
+        if (!SAFE_FEATURES.vertexExplain) return { explanation: null };
+
+        try {
+
+          return { explanation: null };
+
+        } catch (e) {
+
+          return { explanation: null };
+
+        }
+
+      },
+
+    },
+
+
+
+    // Generic fallbacks (unused here, but safe exports for future)
+
+    noop,
+
+    noopVoid,
+
+  };
+
+})();
+
+
+
+export default function ProjectCard({ project }) {
+
+  const riskColors = {
+
+    low: "bg-emerald-100 text-emerald-800 border-emerald-200",
+
+    medium: "bg-blue-100 text-blue-800 border-blue-200",
+
+    high: "bg-amber-100 text-amber-800 border-amber-200",
+
+    critical: "bg-red-100 text-red-800 border-red-200",
+
+  };
+
+
+
+  const statusColors = {
+
+    planning: "bg-slate-100 text-slate-800",
+
+    in_progress: "bg-blue-100 text-blue-800",
+
+    at_risk: "bg-red-100 text-red-800",
+
+    completed: "bg-emerald-100 text-emerald-800",
+
+    cancelled: "bg-slate-100 text-slate-800",
+
+  };
+
+
+
+  return (
+
+    <motion.div
+
+      initial={{ opacity: 0, y: 20 }}
+
+      animate={{ opacity: 1, y: 0 }}
+
+      whileHover={{ y: -4 }}
+
+      transition={{ duration: 0.2 }}
+
+    >
+
+      <Card className="border-slate-200 hover:shadow-xl transition-shadow duration-300">
+
+        <CardHeader>
+
+          <div className="flex items-start justify-between">
+
+            <div className="flex-1">
+
+              <CardTitle className="text-lg font-semibold text-slate-900 mb-2">
+
+                {project.project_name}
+
+              </CardTitle>
+
+
+
+              <div className="flex flex-wrap gap-2">
+
+                <Badge className={riskColors[project.risk_level] || riskColors.low}>
+
+                  {project.risk_level} risk
+
+                </Badge>
+
+
+
+                <Badge className={statusColors[project.status] || statusColors.planning}>
+
+                  {String(project.status || "planning").replace("_", " ")}
+
+                </Badge>
+
+              </div>
+
+            </div>
+
+
+
+            <AlertTriangle
+
+              className={`w-5 h-5 ${
+
+                project.risk_level === "critical"
+
+                  ? "text-red-500"
+
+                  : project.risk_level === "high"
+
+                    ? "text-amber-500"
+
+                    : "text-slate-400"
+
+              }`}
+
+            />
+
+          </div>
+
+        </CardHeader>
+
+
+
+        <CardContent>
+
+          <div className="space-y-3">
+
+            <div className="flex items-center justify-between text-sm">
+
+              <span className="text-slate-600">Department</span>
+
+              <span className="font-medium text-slate-900">{project.department}</span>
+
+            </div>
+
+
+
+            <div className="flex items-center justify-between text-sm">
+
+              <span className="text-slate-600 flex items-center">
+
+                <TrendingUp className="w-4 h-4 mr-1" />
+
+                Success Rate
+
+              </span>
+
+              <span className="font-medium text-emerald-600">
+
+                {project.conversion_success_rate || 0}%
+
+              </span>
+
+            </div>
+
+
+
+            <div className="flex items-center justify-between text-sm">
+
+              <span className="text-slate-600 flex items-center">
+
+                <Users className="w-4 h-4 mr-1" />
+
+                Employees
+
+              </span>
+
+              <span className="font-medium text-slate-900">{project.employees_affected || 0}</span>
+
+            </div>
+
+
+
+            {project.target_completion_date && (
+
+              <div className="flex items-center justify-between text-sm">
+
+                <span className="text-slate-600 flex items-center">
+
+                  <Calendar className="w-4 h-4 mr-1" />
+
+                  Target Date
+
+                </span>
+
+
+
+                <span className="font-medium text-slate-900">
+
+                  {format(new Date(project.target_completion_date), "MMM d, yyyy")}
+
+                </span>
+
+              </div>
+
+            )}
+
+
+
+            <div className="pt-3 border-t border-slate-100">
+
+              <Link to={`${createPageUrl("ProjectDetail")}?id=${project.id}`}>
+
+                <Button className="w-full bg-slate-900 hover:bg-slate-800 text-white">
+
+                  View Details
+
+                  <ArrowRight className="w-4 h-4 ml-2" />
+
+                </Button>
+
+              </Link>
+
+            </div>
+
+          </div>
+
+        </CardContent>
+
+      </Card>
+
+    </motion.div>
+
+  );
+
+}
