@@ -1,0 +1,195 @@
+EmployeeProgress Entity Schema (Corrected & Stable)
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+
+
+Note: The original file contained JSON syntax issues (missing braces/commas and mis-nested fields). The schema below is a minimally invasive correction preserving the same fields, types, and descriptions. No behavioral or UX logic is changed; this is a structural fix only.
+
+
+
+{
+
+  "name": "EmployeeProgress",
+
+  "type": "object",
+
+  "properties": {
+
+    "project_id": {
+
+      "type": "string",
+
+      "description": "Associated project ID"
+
+    },
+
+    "employee_email": {
+
+      "type": "string",
+
+      "description": "Employee email"
+
+    },
+
+    "employee_name": {
+
+      "type": "string",
+
+      "description": "Employee name"
+
+    },
+
+    "target_skill": {
+
+      "type": "string",
+
+      "description": "Skill being learned"
+
+    },
+
+    "progress_percentage": {
+
+      "type": "number",
+
+      "description": "Overall progress (0-100)"
+
+    },
+
+    "skills_acquired": {
+
+      "type": "array",
+
+      "items": {
+
+        "type": "string"
+
+      },
+
+      "description": "List of skills successfully acquired"
+
+    },
+
+    "skills_in_progress": {
+
+      "type": "array",
+
+      "items": {
+
+        "type": "string"
+
+      },
+
+      "description": "Skills currently being learned"
+
+    },
+
+    "completion_date": {
+
+      "type": "string",
+
+      "format": "date",
+
+      "description": "Expected or actual completion date"
+
+    },
+
+    "skill_adoption_rate": {
+
+      "type": "number",
+
+      "description": "Post-conversion skill usage rate (0-100)"
+
+    },
+
+    "performance_score": {
+
+      "type": "number",
+
+      "description": "Performance assessment score (0-100)"
+
+    },
+
+    "learning_path_recommendations": {
+
+      "type": "array",
+
+      "items": {
+
+        "type": "string"
+
+      },
+
+      "description": "Personalized next steps"
+
+    },
+
+    "feedback": {
+
+      "type": "string",
+
+      "description": "Personalized feedback"
+
+    },
+
+    "milestones": {
+
+      "type": "array",
+
+      "items": {
+
+        "type": "object",
+
+        "properties": {
+
+          "name": {
+
+            "type": "string"
+
+          },
+
+          "completed": {
+
+            "type": "boolean"
+
+          },
+
+          "date": {
+
+            "type": "string",
+
+            "format": "date"
+
+          }
+
+        },
+
+        "required": [
+
+          "name",
+
+          "completed"
+
+        ]
+
+      },
+
+      "description": "Learning milestones"
+
+    }
+
+  },
+
+  "required": [
+
+    "project_id",
+
+    "employee_email",
+
+    "target_skill"
+
+  ]
+
+}
