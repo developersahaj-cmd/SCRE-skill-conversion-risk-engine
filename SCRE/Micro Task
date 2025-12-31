@@ -1,0 +1,170 @@
+
+import React, { useState, useEffect, useCallback } from 'react'
+
+import { motion } from 'framer-motion'
+
+import { Button } from '@/components/ui/button'
+
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
+
+import { ArrowLeft, ArrowRight, Timer, GripVertical, CheckCircle } from 'lucide-react'
+
+
+
+export default function MicroTask({ skill, onComplete, onBack }) {
+
+
+
+  const [items, setItems] = useState([])
+
+  const [phase, setPhase] = useState('sequence')
+
+  const [timeLeft, setTimeLeft] = useState(60)
+
+  const [started, setStarted] = useState(false)
+
+  const [moves, setMoves] = useState(0)
+
+
+
+  useEffect(() => {
+
+    if (!started) return
+
+    if (timeLeft <= 0) return
+
+    const t = setInterval(() => setTimeLeft(t => t - 1), 1000)
+
+    return () => clearInterval(t)
+
+  }, [started, timeLeft])
+
+
+
+  const handleDragEnd = useCallback(result => {
+
+    if (!result.destination) return
+
+    const reordered = Array.from(items)
+
+    const [moved] = reordered.splice(result.source.index, 1)
+
+    reordered.splice(result.destination.index, 0, moved)
+
+    setItems(reordered)
+
+    setMoves(m => m + 1)
+
+  }, [items])
+
+
+
+  const submitSequence = () => {
+
+    setPhase('case')
+
+    setTimeLeft(45)
+
+    setMoves(0)
+
+  }
+
+
+
+  const submitFinal = () => {
+
+    onComplete({
+
+      timeUsed: timeLeft,
+
+      moves
+
+    })
+
+  }
+
+
+
+  return (
+
+    <motion.div className="pb-20">
+
+      {!started ? (
+
+        <Button onClick={() => setStarted(true)}>Start Task</Button>
+
+      ) : (
+
+        <>
+
+          <div className="text-center mb-4">
+
+            <Timer /> {timeLeft}s
+
+          </div>
+
+
+
+          {phase === 'sequence' ? (
+
+            <>
+
+              <DragDropContext onDragEnd={handleDragEnd}>
+
+                <Droppable droppableId="seq">
+
+                  {(p) => (
+
+                    <div ref={p.innerRef} {...p.droppableProps}>
+
+                      {items.map((i, idx) => (
+
+                        <Draggable key={i.id} draggableId={i.id} index={idx}>
+
+                          {(p) => (
+
+                            <div ref={p.innerRef} {...p.draggableProps} {...p.dragHandleProps}>
+
+                              <GripVertical /> {i.text}
+
+                            </div>
+
+                          )}
+
+                        </Draggable>
+
+                      ))}
+
+                      {p.placeholder}
+
+                    </div>
+
+                  )}
+
+                </Droppable>
+
+              </DragDropContext>
+
+              <Button onClick={submitSequence}>Continue</Button>
+
+            </>
+
+          ) : (
+
+            <Button onClick={submitFinal}>
+
+              <CheckCircle /> Complete
+
+            </Button>
+
+          )}
+
+        </>
+
+      )}
+
+    </motion.div>
+
+  )
+
+}
