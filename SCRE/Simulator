@@ -1,0 +1,817 @@
+import React, { useState, useEffect } from 'react';
+
+
+
+import { motion } from 'framer-motion';
+
+
+
+import { Slider } from '@/components/ui/slider';
+
+import { Button } from '@/components/ui/button';
+
+
+
+import { Sliders, ArrowRight, RotateCcw } from 'lucide-react';
+
+
+
+const simulatorFactors = [
+
+  {
+
+    id: 'practice_frequency',
+
+    name: 'Practice Frequency',
+
+    description: 'How often you engage in deliberate practice',
+
+  },
+
+  {
+
+    id: 'feedback_response',
+
+    name: 'Feedback Orientation',
+
+    description: 'Your openness to receiving and acting on feedback',
+
+  },
+
+  {
+
+    id: 'abstraction_preference',
+
+    name: 'Abstraction Comfort',
+
+    description: 'Preference for abstract vs concrete learning',
+
+  },
+
+  {
+
+    id: 'cognitive_load',
+
+    name: 'Complexity Handling',
+
+    description: 'How you handle multi-step complex problems',
+
+  },
+
+  {
+
+    id: 'discipline_self_report',
+
+    name: 'Self-Direction',
+
+    description: 'Your self-discipline in challenging situations',
+
+  },
+
+];
+
+
+
+// SAFE INTEGRATION LAYER (Non-breaking)
+
+// - Optional, isolated, fail-safe integrations.
+
+// - No top-level imports for Firebase/Gemini/BigQuery/Vertex to prevent hard dependency.
+
+// - All calls are guarded by feature flags, lazy-loaded, and wrapped in try/catch.
+
+// - Default behavior is a strict no-op.
+
+const SAFE = {
+
+  getFlag(flagName) {
+
+    try {
+
+      // Prefer explicit runtime flags if present; otherwise default false.
+
+      // Supports: globalThis.__SCRE_FEATURES__ = { firebaseAuth: true, ... }
+
+      const flags = globalThis?.__SCRE_FEATURES__ || globalThis?.SCRE_FEATURES || {};
+
+      return Boolean(flags?.[flagName]);
+
+    } catch {
+
+      return False;
+
+    }
+
+  },
+
+
+
+  async logAnalytics(eventName, payload) {
+
+    try {
+
+      if (!SAFE.getFlag('bigqueryAnalytics')) return;
+
+
+
+      // Lazy-load BigQuery logger adapter if available (optional).
+
+      // NOTE: This must be provided by the host app; otherwise it's a no-op.
+
+      const adapter = globalThis?.SCRE_BIGQUERY_ADAPTER;
+
+      if (typeof adapter?.log === 'function') {
+
+        // Fire-and-forget (do not await network).
+
+        adapter.log(eventName, payload);
+
+        return;
+
+      }
+
+
+
+      // Optional dynamic import hook (kept safe: may fail).
+
+      // eslint-disable-next-line no-unused-vars
+
+      const _maybe = await import(/* webpackIgnore: true */ 'bigquery-logger').catch(() => null);
+
+    } catch {
+
+      // swallow
+
+    }
+
+  },
+
+
+
+  async generateInsightsNonBlocking(context) {
+
+    try {
+
+      if (!SAFE.getFlag('geminiInsights')) return null;
+
+
+
+      // Optional host-provided adapter to call Gemini safely.
+
+      const adapter = globalThis?.SCRE_GEMINI_ADAPTER;
+
+      if (typeof adapter?.generateInsights === 'function') {
+
+        return await adapter.generateInsights(context);
+
+      }
+
+
+
+      // Optional dynamic import hook (kept safe: may fail).
+
+      // eslint-disable-next-line no-unused-vars
+
+      const _maybe = await import(/* webpackIgnore: true */ '@google/generative-ai').catch(() => null);
+
+
+
+      return null;
+
+    } catch {
+
+      return null;
+
+    }
+
+  },
+
+
+
+  async inferRiskNonBlocking(input) {
+
+    try {
+
+      if (!SAFE.getFlag('vertexInference')) return null;
+
+
+
+      // Optional host-provided adapter to call Vertex AI safely.
+
+      const adapter = globalThis?.SCRE_VERTEX_ADAPTER;
+
+      if (typeof adapter?.infer === 'function') {
+
+        return await adapter.infer(input);
+
+      }
+
+
+
+      // Optional dynamic import hook (kept safe: may fail).
+
+      // eslint-disable-next-line no-unused-vars
+
+      const _maybe = await import(/* webpackIgnore: true */ '@google-cloud/vertexai').catch(() => null);
+
+
+
+      return null;
+
+    } catch {
+
+      return null;
+
+    }
+
+  },
+
+
+
+  async enrichExplanationNonBlocking(input) {
+
+    try {
+
+      if (!SAFE.getFlag('vertexExplainability')) return null;
+
+
+
+      // Optional host-provided adapter to call Vertex Explainable AI safely.
+
+      const adapter = globalThis?.SCRE_VERTEX_EXPLAIN_ADAPTER;
+
+      if (typeof adapter?.enrich === 'function') {
+
+        return await adapter.enrich(input);
+
+      }
+
+
+
+      return null;
+
+    } catch {
+
+      return null;
+
+    }
+
+  },
+
+
+
+  async maybeInitFirebaseAuthNonBlocking() {
+
+    try {
+
+      if (!SAFE.getFlag('firebaseAuth')) return null;
+
+
+
+      // Firebase is optional, and used ONLY for auth/profile persistence in the host app.
+
+      // If unavailable, we silently no-op.
+
+      const adapter = globalThis?.SCRE_FIREBASE_ADAPTER;
+
+      if (typeof adapter?.initAuth === 'function') {
+
+        return await adapter.initAuth();
+
+      }
+
+
+
+      // Optional dynamic import hook (kept safe: may fail).
+
+      // eslint-disable-next-line no-unused-vars
+
+      const _maybe = await import(/* webpackIgnore: true */ 'firebase/app').catch(() => null);
+
+
+
+      return null;
+
+    } catch {
+
+      return null;
+
+    }
+
+  },
+
+};
+
+
+
+export default function Simulator({
+
+  behavioralData,
+
+  simulatedValues,
+
+  onSimulate,
+
+  currentScore,
+
+  originalScore,
+
+}) {
+
+  const [localValues, setLocalValues] = useState(behavioralData);
+
+  const [isExpanded, setIsExpanded] = useState(false);
+
+
+
+  useEffect(() => {
+
+    // Preserve original intent: reset to behavioralData when simulation is cleared.
+
+    // Least-invasive: if simulatedValues provided, reflect it locally.
+
+    if (simulatedValues === null) {
+
+      setLocalValues(behavioralData);
+
+      return;
+
+    }
+
+    if (simulatedValues && typeof simulatedValues === 'object') {
+
+      setLocalValues(simulatedValues);
+
+      return;
+
+    }
+
+    setLocalValues(behavioralData);
+
+  }, [simulatedValues, behavioralData]);
+
+
+
+  // SAFE INTEGRATION LAYER (Non-breaking)
+
+  // Optional init for Firebase auth in host app; never blocks rendering.
+
+  useEffect(() => {
+
+    let cancelled = false;
+
+    (async () => {
+
+      try {
+
+        if (cancelled) return;
+
+        await SAFE.maybeInitFirebaseAuthNonBlocking();
+
+      } catch {
+
+        // swallow
+
+      }
+
+    })();
+
+    return () => {
+
+      cancelled = true;
+
+    };
+
+  }, []);
+
+
+
+  const handleSliderChange = (id, value) => {
+
+    const newValues = { ...localValues, [id]: value[0] };
+
+    setLocalValues(newValues);
+
+    if (typeof onSimulate === 'function') onSimulate(newValues);
+
+
+
+    // SAFE INTEGRATION LAYER (Non-breaking)
+
+    // Fire-and-forget analytics (BigQuery) if enabled.
+
+    SAFE.logAnalytics('scre_simulator_slider_change', {
+
+      id,
+
+      value: value?.[0],
+
+      ts: Date.now(),
+
+    });
+
+  };
+
+
+
+  const handleReset = () => {
+
+    setLocalValues(behavioralData);
+
+    if (typeof onSimulate === 'function') onSimulate(null);
+
+
+
+    // SAFE INTEGRATION LAYER (Non-breaking)
+
+    SAFE.logAnalytics('scre_simulator_reset', { ts: Date.now() });
+
+  };
+
+
+
+  const scoreDiff = (Number(currentScore) || 0) - (Number(originalScore) || 0);
+
+  const hasChanges = simulatedValues !== null;
+
+
+
+  return (
+
+    <div className="bg-gradient-to-br from-slate-900/90 to-slate-900/70 border border-slate-800/60 rounded-3xl overflow-hidden shadow-2xl backdrop-blur">
+
+      {/* Header */}
+
+      <button
+
+        type="button"
+
+        onClick={() => setIsExpanded(!isExpanded)}
+
+        className="w-full p-8 flex items-center justify-between hover:bg-slate-800/40 transition-all duration-300 group"
+
+      >
+
+        <div className="flex items-center gap-3">
+
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500/20 to-teal-500/20 flex items-center justify-center shadow-lg shadow-black/10">
+
+            <Sliders className="w-6 h-6 text-cyan-400" />
+
+          </div>
+
+
+
+          <div className="text-left">
+
+            <h3 className="text-xl font-bold text-white">What-If Simulator</h3>
+
+            <p className="text-slate-400 text-xs">Adjust behaviors to see risk changes</p>
+
+          </div>
+
+        </div>
+
+
+
+        <div className="flex items-center gap-4">
+
+          {hasChanges && (
+
+            <motion.div
+
+              initial={{ opacity: 0, scale: 0.8 }}
+
+              animate={{ opacity: 1, scale: 1 }}
+
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
+
+                scoreDiff < 0
+
+                  ? 'bg-teal-500/20 text-teal-400'
+
+                  : scoreDiff > 0
+
+                  ? 'bg-rose-500/20 text-rose-400'
+
+                  : 'bg-slate-700 text-slate-400'
+
+              }`}
+
+            >
+
+              <span className="text-sm font-medium">
+
+                {scoreDiff > 0 ? '+' : ''}
+
+                {scoreDiff}%
+
+              </span>
+
+            </motion.div>
+
+          )}
+
+
+
+          <motion.svg
+
+            animate={{ rotate: isExpanded ? 180 : 0 }}
+
+            transition={{ duration: 0.2 }}
+
+            className="w-5 h-5 text-slate-400"
+
+            fill="none"
+
+            viewBox="0 0 24 24"
+
+            stroke="currentColor"
+
+            aria-hidden="true"
+
+          >
+
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+
+          </motion.svg>
+
+        </div>
+
+      </button>
+
+
+
+      {/* Expandable Content */}
+
+      <motion.div
+
+        initial={false}
+
+        animate={{ height: isExpanded ? 'auto' : 0 }}
+
+        transition={{ duration: 0.3 }}
+
+        className="overflow-hidden"
+
+      >
+
+        <div className="px-6 pb-6 border-t border-slate-800">
+
+          {/* Info Banner */}
+
+          <div className="mt-6 p-4 rounded-xl bg-gradient-to-r from-cyan-500/10 to-teal-500/10 border border-cyan-500/20">
+
+            <p className="text-cyan-200 text-sm">
+
+              <span className="font-medium">Explore possibilities:</span> Move the sliders to see how
+
+              changes in behavioral patterns could affect your risk condition. This demonstrates that
+
+              risk is modifiable through intentional adjustment.
+
+            </p>
+
+          </div>
+
+
+
+          {/* Sliders */}
+
+          <div className="mt-6 space-y-6">
+
+            {simulatorFactors.map((factor) => {
+
+              const originalValue = behavioralData?.[factor.id] ?? 50;
+
+              const currentValue = localValues?.[factor.id] ?? 50;
+
+              const valueChanged = currentValue !== originalValue;
+
+
+
+              return (
+
+                <div key={factor.id} className="space-y-3">
+
+                  <div className="flex items-center justify-between">
+
+                    <div>
+
+                      <span className="text-white text-sm font-medium">{factor.name}</span>
+
+                      <p className="text-slate-500 text-xs mt-0.5">{factor.description}</p>
+
+                    </div>
+
+
+
+                    <div className="flex items-center gap-2">
+
+                      {valueChanged && (
+
+                        <motion.span
+
+                          initial={{ opacity: 0 }}
+
+                          animate={{ opacity: 1 }}
+
+                          className="text-xs text-slate-500"
+
+                        >
+
+                          {originalValue}
+
+                        </motion.span>
+
+                      )}
+
+
+
+                      {valueChanged && <ArrowRight className="w-3 h-3 text-slate-600" />}
+
+
+
+                      <span
+
+                        className={`text-sm font-medium ${
+
+                          valueChanged ? 'text-cyan-400' : 'text-slate-400'
+
+                        }`}
+
+                      >
+
+                        {currentValue}
+
+                      </span>
+
+                    </div>
+
+                  </div>
+
+
+
+                  <Slider
+
+                    value={[currentValue]}
+
+                    onValueChange={(val) => handleSliderChange(factor.id, val)}
+
+                    max={100}
+
+                    step={1}
+
+                    className="py-2"
+
+                  />
+
+
+
+                  <div className="flex justify-between text-xs text-slate-600">
+
+                    <span>Lower</span>
+
+                    <span>Higher</span>
+
+                  </div>
+
+                </div>
+
+              );
+
+            })}
+
+          </div>
+
+
+
+          {/* Reset Button */}
+
+          {hasChanges && (
+
+            <motion.div
+
+              initial={{ opacity: 0, y: 10 }}
+
+              animate={{ opacity: 1, y: 0 }}
+
+              className="mt-6 flex justify-center"
+
+            >
+
+              <Button
+
+                type="button"
+
+                onClick={handleReset}
+
+                variant="outline"
+
+                className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
+
+              >
+
+                <RotateCcw className="w-4 h-4 mr-2" />
+
+                Reset to Original Values
+
+              </Button>
+
+            </motion.div>
+
+          )}
+
+
+
+          {/* Score Comparison */}
+
+          {hasChanges && (
+
+            <motion.div
+
+              initial={{ opacity: 0 }}
+
+              animate={{ opacity: 1 }}
+
+              className="mt-6 p-4 rounded-xl bg-slate-800/50 border border-slate-700/50"
+
+            >
+
+              <div className="flex items-center justify-between">
+
+                <div className="text-center">
+
+                  <span className="text-slate-500 text-xs block mb-1">Original</span>
+
+                  <span className="text-white text-xl font-bold">{originalScore}%</span>
+
+                </div>
+
+
+
+                <div className="flex-1 px-6">
+
+                  <div className="h-2 bg-slate-700 rounded-full relative overflow-hidden">
+
+                    <motion.div
+
+                      className={`absolute left-0 top-0 h-full rounded-full ${
+
+                        currentScore < originalScore ? 'bg-teal-500' : 'bg-rose-500'
+
+                      }`}
+
+                      initial={{ width: 0 }}
+
+                      animate={{
+
+                        width: `${Math.min(100, Math.abs(scoreDiff))}%`,
+
+                        left: currentScore < originalScore ? `${currentScore}%` : `${originalScore}%`,
+
+                      }}
+
+                    />
+
+                  </div>
+
+                </div>
+
+
+
+                <div className="text-center">
+
+                  <span className="text-slate-500 text-xs block mb-1">Simulated</span>
+
+                  <span
+
+                    className={`text-xl font-bold ${
+
+                      currentScore < originalScore ? 'text-teal-400' : 'text-rose-400'
+
+                    }`}
+
+                  >
+
+                    {currentScore}%
+
+                  </span>
+
+                </div>
+
+              </div>
+
+            </motion.div>
+
+          )}
+
+        </div>
+
+      </motion.div>
+
+    </div>
+
+  );
+
+}
