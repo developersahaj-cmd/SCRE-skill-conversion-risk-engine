@@ -1,0 +1,7825 @@
+/* 
+
+  ===========================
+
+  SCRE Cognitive Assessment UI
+
+  ===========================
+
+  Drop-in React (JSX) implementation that:
+
+  - Defines ArrowRight locally (fixes missing import/render errors)
+
+  - Replaces Stage-1 questions with NEW QUESTIONS per skill (Likert/scale)
+
+  - Keeps Stage-2 situational questions AND adds them properly (per skill)
+
+  - Adds contradiction/consistency checks (anti-gaming)
+
+  - Produces descriptive (not evaluative) insights + pattern vectors (not “pass/fail”)
+
+  - Optional analytics (off by default)
+
+  - Fixes button visibility (Start New Assessment + Export Report)
+
+  - Ensures export works (downloads JSON report)
+
+  - Adds Progress page in nav: time spent, completion rates, descriptive trends
+
+
+
+  NOTE:
+
+  - This code intentionally tracks preparation/exploration, not “outcomes”.
+
+  - No success/failure framing. No “you are bad/good” language.
+
+*/
+
+
+
+/* ===========================
+
+   Optional analytics (OFF by default)
+
+   =========================== */
+
+const Analytics = (() => {
+
+  const enabled = (() => {
+
+    try {
+
+      return localStorage.getItem("scre_analytics_enabled") === "true";
+
+    } catch {
+
+      return false;
+
+    }
+
+  })();
+
+
+
+  function track(eventName, payload = {}) {
+
+    if (!enabled) return;
+
+    // Optional: plug into your analytics provider
+
+    // window.myAnalytics?.track?.(eventName, payload);
+
+    console.log("[analytics]", eventName, payload);
+
+  }
+
+
+
+  return { enabled, track };
+
+})();
+
+
+
+/* ===========================
+
+   Utilities
+
+   =========================== */
+
+const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+
+
+
+function nowMs() {
+
+  return Date.now();
+
+}
+
+
+
+function safeJsonParse(s, fallback) {
+
+  try {
+
+    return JSON.parse(s);
+
+  } catch {
+
+    return fallback;
+
+  }
+
+}
+
+
+
+function downloadTextFile(filename, text, mime = "application/json") {
+
+  const blob = new Blob([text], { type: mime });
+
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+
+  a.href = url;
+
+  a.download = filename;
+
+  a.click();
+
+  URL.revokeObjectURL(url);
+
+}
+
+
+
+/* ===========================
+
+   Theme helpers
+
+   =========================== */
+
+const styles = {
+
+  app: {
+
+    fontFamily:
+
+      'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif',
+
+    background: "var(--bg, #0b1220)",
+
+    color: "var(--fg, #e8eefc)",
+
+    minHeight: "100vh",
+
+  },
+
+  container: { maxWidth: 980, margin: "0 auto", padding: 16 },
+
+  card: {
+
+    background: "rgba(255,255,255,0.06)",
+
+    border: "1px solid rgba(255,255,255,0.12)",
+
+    borderRadius: 14,
+
+    padding: 16,
+
+    boxShadow: "0 10px 25px rgba(0,0,0,0.25)",
+
+  },
+
+  nav: {
+
+    display: "flex",
+
+    gap: 10,
+
+    alignItems: "center",
+
+    padding: "12px 16px",
+
+    position: "sticky",
+
+    top: 0,
+
+    background: "rgba(11,18,32,0.8)",
+
+    backdropFilter: "blur(12px)",
+
+    borderBottom: "1px solid rgba(255,255,255,0.12)",
+
+    zIndex: 10,
+
+  },
+
+  navBtn: (active) => ({
+
+    padding: "8px 12px",
+
+    borderRadius: 10,
+
+    border: "1px solid rgba(255,255,255,0.14)",
+
+    background: active ? "rgba(255,255,255,0.12)" : "transparent",
+
+    color: "var(--fg, #e8eefc)",
+
+    cursor: "pointer",
+
+  }),
+
+  button: (variant = "primary") => {
+
+    const base = {
+
+      display: "inline-flex",
+
+      alignItems: "center",
+
+      gap: 8,
+
+      padding: "10px 14px",
+
+      borderRadius: 12,
+
+      border: "1px solid rgba(255,255,255,0.14)",
+
+      cursor: "pointer",
+
+      fontWeight: 600,
+
+    };
+
+    if (variant === "primary") {
+
+      return {
+
+        ...base,
+
+        background: "var(--accent, #7c5cff)", // themed (not white)
+
+        color: "white",
+
+        border: "1px solid rgba(255,255,255,0.08)",
+
+      };
+
+    }
+
+    if (variant === "secondary") {
+
+      return {
+
+        ...base,
+
+        background: "rgba(255,255,255,0.10)",
+
+        color: "var(--fg, #e8eefc)",
+
+      };
+
+    }
+
+    if (variant === "ghost") {
+
+      return {
+
+        ...base,
+
+        background: "transparent",
+
+        color: "var(--fg, #e8eefc)",
+
+      };
+
+    }
+
+    return base;
+
+  },
+
+  pill: {
+
+    display: "inline-flex",
+
+    alignItems: "center",
+
+    padding: "6px 10px",
+
+    borderRadius: 999,
+
+    border: "1px solid rgba(255,255,255,0.14)",
+
+    background: "rgba(255,255,255,0.08)",
+
+    fontSize: 12,
+
+  },
+
+  hr: { border: 0, borderTop: "1px solid rgba(255,255,255,0.12)" },
+
+  label: { fontSize: 12, opacity: 0.8, marginBottom: 6 },
+
+  input: {
+
+    width: "100%",
+
+    padding: "10px 12px",
+
+    borderRadius: 12,
+
+    border: "1px solid rgba(255,255,255,0.14)",
+
+    background: "rgba(0,0,0,0.25)",
+
+    color: "var(--fg, #e8eefc)",
+
+    outline: "none",
+
+  },
+
+  small: { fontSize: 12, opacity: 0.85 },
+
+};
+
+
+
+/* ===========================
+
+   ArrowRight (FIX)
+
+   ===========================
+
+   Sahaj asked: define ArrowRight wherever used.
+
+   This ensures no missing icon import causes runtime error.
+
+*/
+
+export function ArrowRight({ size = 18 }) {
+
+  return (
+
+    <svg
+
+      width={size}
+
+      height={size}
+
+      viewBox="0 0 24 24"
+
+      fill="none"
+
+      aria-hidden="true"
+
+    >
+
+      <path
+
+        d="M5 12h12"
+
+        stroke="currentColor"
+
+        strokeWidth="2"
+
+        strokeLinecap="round"
+
+      />
+
+      <path
+
+        d="M13 6l6 6-6 6"
+
+        stroke="currentColor"
+
+        strokeWidth="2"
+
+        strokeLinecap="round"
+
+        strokeLinejoin="round"
+
+      />
+
+    </svg>
+
+  );
+
+}
+
+
+
+/* ===========================
+
+   Data model (GLOBAL STABILITY)
+
+   - Nullable fields allowed
+
+   - Backward compatible structures
+
+   =========================== */
+
+const SKILLS = [
+
+  "Coding",
+
+  "Data Science",
+
+  "Marketing",
+
+  "Design",
+
+  "Creative Writing",
+
+  "Public Speaking",
+
+  "Video Editing",
+
+  "Music Production",
+
+  "Entrepreneurship",
+
+  "Teaching",
+
+  "Product Management",
+
+];
+
+
+
+const CONTEXTS = ["Job", "Hobby/Fun"];
+
+
+
+/* Stage-1 (NEW QUESTIONS) — replace existing */
+
+const STAGE1_QUESTIONS = {
+
+  Coding: [
+
+    {
+
+      id: "code_1",
+
+      type: "scale",
+
+      prompt:
+
+        "When your code does not work and the reason is unclear, how long are you usually willing to continue trying before feeling mentally exhausted?",
+
+      scaleLabel: "Comfort scale",
+
+      signal: "debugging_endurance_time",
+
+    },
+
+    {
+
+      id: "code_2",
+
+      type: "frequency",
+
+      prompt:
+
+        "How often do you continue working on a problem even after multiple failed attempts?",
+
+      scaleLabel: "Frequency",
+
+      signal: "persistence_frequency",
+
+    },
+
+    {
+
+      id: "code_3",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you learning programming concepts that feel abstract before you see practical results?",
+
+      scaleLabel: "Comfort",
+
+      signal: "abstraction_comfort",
+
+    },
+
+    {
+
+      id: "code_4",
+
+      type: "impact",
+
+      prompt:
+
+        "When feedback or results are delayed, how strongly does it affect your motivation to continue?",
+
+      scaleLabel: "Impact intensity",
+
+      signal: "delayed_feedback_impact",
+
+    },
+
+    {
+
+      id: "code_5",
+
+      type: "frequency",
+
+      prompt:
+
+        "How often do you rely on documentation or written resources without step-by-step guidance?",
+
+      scaleLabel: "Frequency",
+
+      signal: "self_directed_docs",
+
+    },
+
+    {
+
+      id: "code_6",
+
+      type: "likelihood",
+
+      prompt:
+
+        "When a solution works but feels inefficient, how likely are you to revisit and improve it?",
+
+      scaleLabel: "Likelihood",
+
+      signal: "refinement_likelihood",
+
+    },
+
+  ],
+
+  "Data Science": [
+
+    {
+
+      id: "ds_1",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you working on problems where there is no clearly defined “correct” answer?",
+
+      scaleLabel: "Comfort",
+
+      signal: "no_single_answer_comfort",
+
+    },
+
+    {
+
+      id: "ds_2",
+
+      type: "scale",
+
+      prompt:
+
+        "When insights take time to emerge from data, how well are you able to stay engaged?",
+
+      scaleLabel: "Comfort",
+
+      signal: "slow_insight_engagement",
+
+    },
+
+    {
+
+      id: "ds_3",
+
+      type: "frequency",
+
+      prompt: "How often do you revise your assumptions after seeing new evidence?",
+
+      scaleLabel: "Frequency",
+
+      signal: "assumption_revision_frequency",
+
+    },
+
+    {
+
+      id: "ds_4",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you making decisions based on probabilistic or uncertain outcomes?",
+
+      scaleLabel: "Comfort",
+
+      signal: "probabilistic_decision_comfort",
+
+    },
+
+    {
+
+      id: "ds_5",
+
+      type: "likelihood",
+
+      prompt:
+
+        "When results contradict your expectations, how likely are you to explore alternative explanations?",
+
+      scaleLabel: "Likelihood",
+
+      signal: "alt_explanation_likelihood",
+
+    },
+
+    {
+
+      id: "ds_6",
+
+      type: "impact",
+
+      prompt:
+
+        "How strongly does delayed validation affect your motivation to continue working?",
+
+      scaleLabel: "Impact",
+
+      signal: "delayed_validation_impact",
+
+    },
+
+  ],
+
+  Marketing: [
+
+    {
+
+      id: "mkt_1",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you testing ideas that may receive negative or unpredictable public responses?",
+
+      scaleLabel: "Comfort",
+
+      signal: "public_uncertainty_comfort",
+
+    },
+
+    {
+
+      id: "mkt_2",
+
+      type: "scale",
+
+      prompt:
+
+        "When feedback is critical or unexpected, how well are you able to adapt without losing momentum?",
+
+      scaleLabel: "Comfort",
+
+      signal: "critical_feedback_adaptability",
+
+    },
+
+    {
+
+      id: "mkt_3",
+
+      type: "frequency",
+
+      prompt:
+
+        "How often are you willing to discard strategies that stop working, even after investing effort?",
+
+      scaleLabel: "Frequency",
+
+      signal: "strategy_discard_frequency",
+
+    },
+
+    {
+
+      id: "mkt_4",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you making decisions without having complete data?",
+
+      scaleLabel: "Comfort",
+
+      signal: "incomplete_data_comfort",
+
+    },
+
+    {
+
+      id: "mkt_5",
+
+      type: "impact",
+
+      prompt:
+
+        "How motivating do you find experimentation compared to guaranteed outcomes?",
+
+      scaleLabel: "Preference intensity",
+
+      signal: "experimentation_preference",
+
+    },
+
+  ],
+
+  Design: [
+
+    {
+
+      id: "des_1",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you receiving feedback that is subjective or conflicting?",
+
+      scaleLabel: "Comfort",
+
+      signal: "subjective_feedback_comfort",
+
+    },
+
+    {
+
+      id: "des_2",
+
+      type: "scale",
+
+      prompt:
+
+        "When asked to revise work multiple times, how well do you maintain motivation?",
+
+      scaleLabel: "Comfort",
+
+      signal: "revision_motivation",
+
+    },
+
+    {
+
+      id: "des_3",
+
+      type: "frequency",
+
+      prompt:
+
+        "How often do you iterate on work that already meets basic requirements?",
+
+      scaleLabel: "Frequency",
+
+      signal: "extra_iteration_frequency",
+
+    },
+
+    {
+
+      id: "des_4",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you starting with rough drafts instead of polished outputs?",
+
+      scaleLabel: "Comfort",
+
+      signal: "rough_draft_comfort",
+
+    },
+
+    {
+
+      id: "des_5",
+
+      type: "scale",
+
+      prompt:
+
+        "When opinions differ strongly, how easily can you separate feedback from personal judgment?",
+
+      scaleLabel: "Ease",
+
+      signal: "ego_detachment_ease",
+
+    },
+
+  ],
+
+  "Creative Writing": [
+
+    {
+
+      id: "cw_1",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you writing without immediate feedback or validation?",
+
+      scaleLabel: "Comfort",
+
+      signal: "no_immediate_feedback_comfort",
+
+    },
+
+    {
+
+      id: "cw_2",
+
+      type: "frequency",
+
+      prompt: "How often do you revise or rewrite significant portions of your work?",
+
+      scaleLabel: "Frequency",
+
+      signal: "revision_frequency",
+
+    },
+
+    {
+
+      id: "cw_3",
+
+      type: "likelihood",
+
+      prompt:
+
+        "When you feel uncertain about quality, how likely are you to continue writing anyway?",
+
+      scaleLabel: "Likelihood",
+
+      signal: "continue_under_uncertainty",
+
+    },
+
+    {
+
+      id: "cw_4",
+
+      type: "impact",
+
+      prompt:
+
+        "How strongly do emotional fluctuations affect your ability to keep writing?",
+
+      scaleLabel: "Impact",
+
+      signal: "emotion_impact_writing",
+
+    },
+
+    {
+
+      id: "cw_5",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you developing ideas gradually rather than all at once?",
+
+      scaleLabel: "Comfort",
+
+      signal: "gradual_idea_development",
+
+    },
+
+  ],
+
+  "Public Speaking": [
+
+    {
+
+      id: "ps_1",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you speaking in front of unfamiliar or evaluative audiences?",
+
+      scaleLabel: "Comfort",
+
+      signal: "audience_exposure_comfort",
+
+    },
+
+    {
+
+      id: "ps_2",
+
+      type: "scale",
+
+      prompt:
+
+        "When you make a visible mistake while speaking, how quickly are you able to recover?",
+
+      scaleLabel: "Recovery ease",
+
+      signal: "mistake_recovery",
+
+    },
+
+    {
+
+      id: "ps_3",
+
+      type: "frequency",
+
+      prompt: "How often do you practice aloud rather than only mentally?",
+
+      scaleLabel: "Frequency",
+
+      signal: "aloud_practice_frequency",
+
+    },
+
+    {
+
+      id: "ps_4",
+
+      type: "impact",
+
+      prompt:
+
+        "How strongly does immediate audience feedback affect your focus during delivery?",
+
+      scaleLabel: "Impact",
+
+      signal: "audience_feedback_impact",
+
+    },
+
+    {
+
+      id: "ps_5",
+
+      type: "likelihood",
+
+      prompt:
+
+        "After a performance that felt off, how willing are you to speak again soon?",
+
+      scaleLabel: "Willingness",
+
+      signal: "re_engage_willingness",
+
+    },
+
+  ],
+
+  "Video Editing": [
+
+    {
+
+      id: "ve_1",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you working on tasks that require repeated fine-tuning?",
+
+      scaleLabel: "Comfort",
+
+      signal: "fine_tuning_comfort",
+
+    },
+
+    {
+
+      id: "ve_2",
+
+      type: "scale",
+
+      prompt: "When progress feels slow, how well do you stay engaged?",
+
+      scaleLabel: "Comfort",
+
+      signal: "slow_progress_engagement",
+
+    },
+
+    {
+
+      id: "ve_3",
+
+      type: "frequency",
+
+      prompt: "How often do you revisit small details to improve overall quality?",
+
+      scaleLabel: "Frequency",
+
+      signal: "detail_revisit_frequency",
+
+    },
+
+    {
+
+      id: "ve_4",
+
+      type: "impact",
+
+      prompt: "How strongly does delayed feedback affect your motivation?",
+
+      scaleLabel: "Impact",
+
+      signal: "delayed_feedback_impact",
+
+    },
+
+    {
+
+      id: "ve_5",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you deciding when work is “good enough” to finalize?",
+
+      scaleLabel: "Comfort",
+
+      signal: "completion_threshold_comfort",
+
+    },
+
+  ],
+
+  "Music Production": [
+
+    {
+
+      id: "mp_1",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you repeating small sections many times to improve quality?",
+
+      scaleLabel: "Comfort",
+
+      signal: "micro_iteration_comfort",
+
+    },
+
+    {
+
+      id: "mp_2",
+
+      type: "scale",
+
+      prompt:
+
+        "When improvement is not immediately noticeable, how well do you stay motivated?",
+
+      scaleLabel: "Comfort",
+
+      signal: "slow_improvement_motivation",
+
+    },
+
+    {
+
+      id: "mp_3",
+
+      type: "frequency",
+
+      prompt:
+
+        "How often do you experiment with variations before settling on a final version?",
+
+      scaleLabel: "Frequency",
+
+      signal: "variation_experiment_frequency",
+
+    },
+
+    {
+
+      id: "mp_4",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you working independently without frequent feedback?",
+
+      scaleLabel: "Comfort",
+
+      signal: "independent_work_comfort",
+
+    },
+
+    {
+
+      id: "mp_5",
+
+      type: "scale",
+
+      prompt: "How patient are you with technical setup and troubleshooting?",
+
+      scaleLabel: "Comfort",
+
+      signal: "tech_troubleshooting_patience",
+
+    },
+
+    {
+
+      id: "mp_6",
+
+      type: "likelihood",
+
+      prompt:
+
+        "How willing are you to refine details that others may not immediately notice?",
+
+      scaleLabel: "Willingness",
+
+      signal: "subtle_refinement_willingness",
+
+    },
+
+  ],
+
+  Entrepreneurship: [
+
+    {
+
+      id: "ent_1",
+
+      type: "scale",
+
+      prompt: "How comfortable are you making decisions with incomplete information?",
+
+      scaleLabel: "Comfort",
+
+      signal: "incomplete_info_decision",
+
+    },
+
+    {
+
+      id: "ent_2",
+
+      type: "scale",
+
+      prompt:
+
+        "When plans fail, how well are you able to continue without losing motivation?",
+
+      scaleLabel: "Resilience",
+
+      signal: "plan_failure_resilience",
+
+    },
+
+    {
+
+      id: "ent_3",
+
+      type: "frequency",
+
+      prompt: "How often do you manage multiple responsibilities simultaneously?",
+
+      scaleLabel: "Frequency",
+
+      signal: "multi_responsibility_frequency",
+
+    },
+
+    {
+
+      id: "ent_4",
+
+      type: "scale",
+
+      prompt: "How comfortable are you adapting quickly when circumstances change?",
+
+      scaleLabel: "Comfort",
+
+      signal: "adapt_quickly_comfort",
+
+    },
+
+    {
+
+      id: "ent_5",
+
+      type: "impact",
+
+      prompt:
+
+        "How strongly does lack of immediate progress affect your persistence?",
+
+      scaleLabel: "Impact",
+
+      signal: "no_immediate_progress_impact",
+
+    },
+
+    {
+
+      id: "ent_6",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you owning outcomes influenced by many external factors?",
+
+      scaleLabel: "Comfort",
+
+      signal: "external_factors_ownership",
+
+    },
+
+  ],
+
+  Teaching: [
+
+    {
+
+      id: "teach_1",
+
+      type: "scale",
+
+      prompt: "How comfortable are you explaining the same concept in multiple ways?",
+
+      scaleLabel: "Comfort",
+
+      signal: "re_explain_comfort",
+
+    },
+
+    {
+
+      id: "teach_2",
+
+      type: "scale",
+
+      prompt: "When learners progress slowly, how well do you maintain patience?",
+
+      scaleLabel: "Comfort",
+
+      signal: "slow_progress_patience",
+
+    },
+
+    {
+
+      id: "teach_3",
+
+      type: "frequency",
+
+      prompt:
+
+        "How often do you adjust your explanations based on learner response?",
+
+      scaleLabel: "Frequency",
+
+      signal: "adapt_explanation_frequency",
+
+    },
+
+    {
+
+      id: "teach_4",
+
+      type: "impact",
+
+      prompt:
+
+        "How strongly does learner frustration affect your own motivation?",
+
+      scaleLabel: "Impact",
+
+      signal: "learner_frustration_impact",
+
+    },
+
+    {
+
+      id: "teach_5",
+
+      type: "scale",
+
+      prompt:
+
+        "How consistent are you in preparing even when outcomes vary?",
+
+      scaleLabel: "Consistency",
+
+      signal: "prep_consistency",
+
+    },
+
+  ],
+
+  "Product Management": [
+
+    {
+
+      id: "pm_1",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you making decisions despite conflicting inputs?",
+
+      scaleLabel: "Comfort",
+
+      signal: "conflicting_inputs_comfort",
+
+    },
+
+    {
+
+      id: "pm_2",
+
+      type: "scale",
+
+      prompt:
+
+        "How well do you handle responsibility for outcomes you do not fully control?",
+
+      scaleLabel: "Comfort",
+
+      signal: "partial_control_responsibility",
+
+    },
+
+    {
+
+      id: "pm_3",
+
+      type: "frequency",
+
+      prompt:
+
+        "How often do you switch between strategic and execution thinking?",
+
+      scaleLabel: "Frequency",
+
+      signal: "strategy_execution_switch",
+
+    },
+
+    {
+
+      id: "pm_4",
+
+      type: "impact",
+
+      prompt:
+
+        "How strongly does delayed feedback affect your confidence in decisions?",
+
+      scaleLabel: "Impact",
+
+      signal: "delayed_feedback_confidence_impact",
+
+    },
+
+    {
+
+      id: "pm_5",
+
+      type: "likelihood",
+
+      prompt:
+
+        "How willing are you to revisit decisions when new information appears?",
+
+      scaleLabel: "Willingness",
+
+      signal: "revisit_decisions_willingness",
+
+    },
+
+    {
+
+      id: "pm_6",
+
+      type: "scale",
+
+      prompt: "How comfortable are you working in situations with ongoing ambiguity?",
+
+      scaleLabel: "Comfort",
+
+      signal: "ongoing_ambiguity_comfort",
+
+    },
+
+  ],
+
+};
+
+
+
+/* Stage-2 situational question bank (keep + add properly) */
+
+const STAGE2_SITUATIONAL = {
+
+  Coding: [
+
+    {
+
+      id: "code_s1",
+
+      prompt:
+
+        "You write code that almost works but fails unpredictably. What do you do first?",
+
+      options: [
+
+        "Rewrite the code from scratch",
+
+        "Insert logs and test small sections",
+
+        "Search for similar problems online immediately",
+
+        "Step away and revisit later",
+
+      ],
+
+      signal: "ambiguity_debugging_style",
+
+    },
+
+    {
+
+      id: "code_s2",
+
+      prompt: "When encountering a new concept like recursion:",
+
+      options: [
+
+        "Memorize syntax and examples",
+
+        "Understand the underlying logic before coding",
+
+        "Copy working code and modify it",
+
+        "Skip until required",
+
+      ],
+
+      signal: "abstraction_depth_preference",
+
+    },
+
+    {
+
+      id: "code_s3",
+
+      prompt: "Your code review contains many comments. You mostly feel:",
+
+      options: [
+
+        "Motivated to improve",
+
+        "Overwhelmed but willing",
+
+        "Defensive",
+
+        "Discouraged",
+
+      ],
+
+      signal: "feedback_absorption",
+
+    },
+
+    {
+
+      id: "code_s4",
+
+      prompt: "You’re stuck on a bug for 2 days. You are more likely to:",
+
+      options: [
+
+        "Persist methodically",
+
+        "Jump to a different task",
+
+        "Ask for help early",
+
+        "Question whether coding is for you",
+
+      ],
+
+      signal: "stuck_response",
+
+    },
+
+    {
+
+      id: "code_s5",
+
+      prompt:
+
+        "Coding for: Job deadline vs personal project — which feels harder and why? (Short response)",
+
+      type: "text",
+
+      signal: "context_pressure_reflection",
+
+    },
+
+  ],
+
+  "Data Science": [
+
+    {
+
+      id: "ds_s1",
+
+      prompt: "Dataset has missing values and inconsistencies. You:",
+
+      options: [
+
+        "Clean aggressively before analysis",
+
+        "Explore patterns first",
+
+        "Look for a cleaner dataset",
+
+        "Feel stuck",
+
+      ],
+
+      signal: "messy_data_tolerance_style",
+
+    },
+
+    {
+
+      id: "ds_s2",
+
+      prompt: "Your model performs worse than expected. You assume:",
+
+      options: [
+
+        "Data issue",
+
+        "Feature issue",
+
+        "Algorithm issue",
+
+        "Your understanding is insufficient",
+
+      ],
+
+      signal: "attribution_locus",
+
+    },
+
+    {
+
+      id: "ds_s3",
+
+      prompt: "When encountering formulas:",
+
+      options: [
+
+        "Need intuition first",
+
+        "Prefer derivations",
+
+        "Focus only on usage",
+
+        "Avoid math-heavy parts",
+
+      ],
+
+      signal: "math_abstraction_preference",
+
+    },
+
+    {
+
+      id: "ds_s4",
+
+      prompt: "After multiple failed experiments:",
+
+      options: ["Energized", "Neutral", "Frustrated", "Ready to quit"],
+
+      signal: "iteration_emotional_profile",
+
+    },
+
+    {
+
+      id: "ds_s5",
+
+      prompt:
+
+        "Data science for: business decisions vs curiosity-driven analysis — which aligns better and why?",
+
+      type: "text",
+
+      signal: "purpose_alignment",
+
+    },
+
+  ],
+
+  Marketing: [
+
+    {
+
+      id: "mkt_s1",
+
+      prompt: "Campaign underperforms. You:",
+
+      options: [
+
+        "Analyze metrics",
+
+        "Change messaging",
+
+        "Abandon idea",
+
+        "Doubt skill",
+
+      ],
+
+      signal: "iteration_response_style",
+
+    },
+
+    {
+
+      id: "mkt_s2",
+
+      prompt: "You trust:",
+
+      options: ["Data more", "Intuition more", "Balance", "Neither fully"],
+
+      signal: "decision_bias",
+
+    },
+
+    {
+
+      id: "mkt_s3",
+
+      prompt: "Negative comments appear. You:",
+
+      options: ["Learn from them", "Ignore", "Get defensive", "Panic"],
+
+      signal: "emotional_regulation_public",
+
+    },
+
+    {
+
+      id: "mkt_s4",
+
+      prompt: "Tight deadlines make you:",
+
+      options: ["Focus", "Rush", "Freeze", "Burn out"],
+
+      signal: "pressure_handling",
+
+    },
+
+    {
+
+      id: "mkt_s5",
+
+      prompt:
+
+        "Marketing for: sales vs storytelling — which sustains effort?",
+
+      type: "text",
+
+      signal: "motivation_type",
+
+    },
+
+  ],
+
+  Design: [
+
+    {
+
+      id: "des_s1",
+
+      prompt: "User dislikes your design. You:",
+
+      options: ["Ask why", "Defend rationale", "Redesign quickly", "Feel demotivated"],
+
+      signal: "user_empathy_vs_ego",
+
+    },
+
+    {
+
+      id: "des_s2",
+
+      prompt: "New design task:",
+
+      options: ["Research users", "Sketch immediately", "Look at references", "Wait for clarity"],
+
+      signal: "process_discipline",
+
+    },
+
+    {
+
+      id: "des_s3",
+
+      prompt: "No clear brief provided. You:",
+
+      options: ["Define assumptions", "Ask questions", "Delay", "Feel blocked"],
+
+      signal: "ambiguity_navigation",
+
+    },
+
+    {
+
+      id: "des_s4",
+
+      prompt: "How many iterations before fatigue? (Open response)",
+
+      type: "text",
+
+      signal: "iteration_stamina_reflection",
+
+    },
+
+    {
+
+      id: "des_s5",
+
+      prompt: "Designing for: client vs personal project — which is harder?",
+
+      type: "text",
+
+      signal: "constraint_tolerance_context",
+
+    },
+
+  ],
+
+  "Creative Writing": [
+
+    {
+
+      id: "cw_s1",
+
+      prompt: "Facing a blank page:",
+
+      options: ["Outline first", "Free write", "Delay", "Seek prompts"],
+
+      signal: "initiation_behavior",
+
+    },
+
+    {
+
+      id: "cw_s2",
+
+      prompt: "Reader critiques your tone. You:",
+
+      options: ["Reflect deeply", "Partially accept", "Defend intent", "Feel discouraged"],
+
+      signal: "ego_vs_craft",
+
+    },
+
+    {
+
+      id: "cw_s3",
+
+      prompt: "You prefer:",
+
+      options: ["Multiple drafts", "Minor edits", "Starting fresh", "Avoid revising"],
+
+      signal: "rework_tolerance",
+
+    },
+
+    {
+
+      id: "cw_s4",
+
+      prompt: "Writing for: expression vs publication — which motivates consistency?",
+
+      type: "text",
+
+      signal: "intrinsic_vs_extrinsic",
+
+    },
+
+    {
+
+      id: "cw_s5",
+
+      prompt: "When ideas stop:",
+
+      options: ["Push through", "Change environment", "Consume content", "Stop writing"],
+
+      signal: "block_coping",
+
+    },
+
+  ],
+
+  "Public Speaking": [
+
+    {
+
+      id: "ps_s1",
+
+      prompt: "You feel nervous. You:",
+
+      options: ["Practice more", "Avoid", "Rationalize", "Freeze"],
+
+      signal: "anxiety_coping",
+
+    },
+
+    {
+
+      id: "ps_s2",
+
+      prompt: "You forget a point on stage. You:",
+
+      options: ["Adapt", "Panic", "Restart", "End early"],
+
+      signal: "recovery_ability",
+
+    },
+
+    {
+
+      id: "ps_s3",
+
+      prompt: "Audience critique:",
+
+      options: ["Motivates", "Neutral", "Discourages", "Angers"],
+
+      signal: "feedback_resilience",
+
+    },
+
+    {
+
+      id: "ps_s4",
+
+      prompt: "You prefer:",
+
+      options: ["Rehearsed", "Semi-structured", "Improvised", "Minimal prep"],
+
+      signal: "structure_preference",
+
+    },
+
+    {
+
+      id: "ps_s5",
+
+      prompt: "Speaking for: career vs personal growth — which feels heavier?",
+
+      type: "text",
+
+      signal: "pressure_sensitivity_context",
+
+    },
+
+  ],
+
+  "Video Editing": [
+
+    {
+
+      id: "ve_s1",
+
+      prompt: "Editing takes longer than expected. You:",
+
+      options: ["Break into parts", "Push through", "Delay", "Quit"],
+
+      signal: "task_endurance_style",
+
+    },
+
+    {
+
+      id: "ve_s2",
+
+      prompt: "Multiple revisions requested. You:",
+
+      options: ["Improve calmly", "Get annoyed", "Rush", "Feel defeated"],
+
+      signal: "revision_tolerance",
+
+    },
+
+    {
+
+      id: "ve_s3",
+
+      prompt: "New shortcut:",
+
+      options: ["Learn", "Ignore", "Later", "Avoid"],
+
+      signal: "optimization_mindset",
+
+    },
+
+    {
+
+      id: "ve_s4",
+
+      prompt: "When to stop editing? (Open response)",
+
+      type: "text",
+
+      signal: "completion_judgment",
+
+    },
+
+    {
+
+      id: "ve_s5",
+
+      prompt: "Editing for: YouTube vs client — which is harder?",
+
+      type: "text",
+
+      signal: "constraint_handling",
+
+    },
+
+  ],
+
+  "Music Production": [
+
+    {
+
+      id: "mp_s1",
+
+      prompt: "Track sounds bad. You:",
+
+      options: ["Iterate", "Scrap", "Compare to others", "Feel inadequate"],
+
+      signal: "comparison_sensitivity",
+
+    },
+
+    {
+
+      id: "mp_s2",
+
+      prompt: "Music theory feels:",
+
+      options: ["Helpful", "Limiting", "Overwhelming", "Avoidable"],
+
+      signal: "structure_tolerance",
+
+    },
+
+    {
+
+      id: "mp_s3",
+
+      prompt: "Consistency depends on: mood vs schedule (Short response)",
+
+      type: "text",
+
+      signal: "discipline_vs_emotion",
+
+    },
+
+    {
+
+      id: "mp_s4",
+
+      prompt: "Others dislike your track. You:",
+
+      options: ["Learn", "Defend", "Ignore", "Stop sharing"],
+
+      signal: "vulnerability_tolerance",
+
+    },
+
+    {
+
+      id: "mp_s5",
+
+      prompt: "Producing for: audience vs self — which sustains effort?",
+
+      type: "text",
+
+      signal: "motivation_source",
+
+    },
+
+  ],
+
+  Entrepreneurship: [
+
+    {
+
+      id: "ent_s1",
+
+      prompt: "An idea fails. You:",
+
+      options: ["Pivot", "Persist", "Abandon", "Self-blame"],
+
+      signal: "failure_framing_style",
+
+    },
+
+    {
+
+      id: "ent_s2",
+
+      prompt: "No clear path. You:",
+
+      options: ["Experiment", "Research", "Wait", "Panic"],
+
+      signal: "ambiguity_handling",
+
+    },
+
+    {
+
+      id: "ent_s3",
+
+      prompt: "Risk makes you feel:",
+
+      options: ["Energized", "Cautious", "Anxious", "Paralyzed"],
+
+      signal: "risk_affect",
+
+    },
+
+    {
+
+      id: "ent_s4",
+
+      prompt: "Criticism from others:",
+
+      options: ["Filter", "Internalize", "Ignore", "Get defensive"],
+
+      signal: "ego_control",
+
+    },
+
+    {
+
+      id: "ent_s5",
+
+      prompt: "Entrepreneurship for: freedom vs wealth — which sustains effort?",
+
+      type: "text",
+
+      signal: "intrinsic_driver",
+
+    },
+
+  ],
+
+  Teaching: [
+
+    {
+
+      id: "teach_s1",
+
+      prompt: "Student doesn’t understand. You:",
+
+      options: ["Rephrase", "Repeat", "Get frustrated", "Move on"],
+
+      signal: "patience_style",
+
+    },
+
+    {
+
+      id: "teach_s2",
+
+      prompt: "Student feedback is poor. You:",
+
+      options: ["Reflect", "Justify", "Ignore", "Feel discouraged"],
+
+      signal: "adaptability",
+
+    },
+
+    {
+
+      id: "teach_s3",
+
+      prompt: "You prefer:",
+
+      options: ["Structured plans", "Flexible flow", "Minimal prep", "Overprepare"],
+
+      signal: "structure_comfort",
+
+    },
+
+    {
+
+      id: "teach_s4",
+
+      prompt: "Teaching drains you because? (Open response)",
+
+      type: "text",
+
+      signal: "emotional_cost_awareness",
+
+    },
+
+    {
+
+      id: "teach_s5",
+
+      prompt: "Teaching for: income vs impact — which motivates?",
+
+      type: "text",
+
+      signal: "value_alignment",
+
+    },
+
+  ],
+
+  "Product Management": [
+
+    {
+
+      id: "pm_s1",
+
+      prompt: "Conflicting stakeholders. You:",
+
+      options: ["Prioritize data", "Balance interests", "Avoid conflict", "Get stressed"],
+
+      signal: "conflict_management",
+
+    },
+
+    {
+
+      id: "pm_s2",
+
+      prompt: "Unclear requirements. You:",
+
+      options: ["Define assumptions", "Ask questions", "Delay", "Feel blocked"],
+
+      signal: "ambiguity_tolerance",
+
+    },
+
+    {
+
+      id: "pm_s3",
+
+      prompt: "Wrong decision made. You:",
+
+      options: ["Own it", "Justify", "Deflect", "Withdraw"],
+
+      signal: "responsibility_ownership",
+
+    },
+
+    {
+
+      id: "pm_s4",
+
+      prompt: "Product iteration feels:",
+
+      options: ["Natural", "Draining", "Frustrating", "Avoidable"],
+
+      signal: "iteration_stamina",
+
+    },
+
+    {
+
+      id: "pm_s5",
+
+      prompt: "PM role for: authority vs problem-solving — which motivates?",
+
+      type: "text",
+
+      signal: "power_vs_craft",
+
+    },
+
+  ],
+
+};
+
+
+
+/* ===========================
+
+   Contradiction detection logic
+
+   - Flags conflicting or unrealistic behavioral inputs
+
+   - No moralizing; just “this seems internally inconsistent”
+
+   =========================== */
+
+function contradictionChecks(skill, stage1Answers = {}, stage2Answers = {}) {
+
+  const flags = [];
+
+
+
+  // Helpers (stage1 scale: 1-5)
+
+  const s = (signalKey) => stage1Answers?.[signalKey]?.value ?? null;
+
+
+
+  if (skill === "Coding") {
+
+    const abstraction = s("abstraction_comfort");
+
+    const delayed = s("delayed_feedback_impact");
+
+    const endurance = s("debugging_endurance_time");
+
+    if (abstraction != null && abstraction >= 4 && endurance != null && endurance <= 2) {
+
+      flags.push(
+
+        "You indicated high comfort with abstract concepts, but low tolerance for prolonged unclear debugging. If both are accurate, consider clarifying whether your comfort changes under time pressure."
+
+      );
+
+    }
+
+    if (delayed != null && delayed >= 4 && stage2Answers?.["feedback_absorption"] === "Motivated to improve") {
+
+      flags.push(
+
+        "You noted delayed feedback strongly affects motivation, while also describing feedback as motivating. This can be true in different contexts; you may want to note when feedback feels helpful vs draining."
+
+      );
+
+    }
+
+  }
+
+
+
+  if (skill === "Data Science") {
+
+    const noCorrect = s("no_single_answer_comfort");
+
+    const prob = s("probabilistic_decision_comfort");
+
+    if (noCorrect != null && noCorrect <= 2 && prob != null && prob >= 4) {
+
+      flags.push(
+
+        "You reported low comfort with problems lacking a single correct answer, but high comfort with probabilistic decisions. If both are true, it may depend on how clearly the uncertainty is framed."
+
+      );
+
+    }
+
+  }
+
+
+
+  // Generic: extreme “very low” engagement + “very high” detail revisits
+
+  if (skill === "Video Editing") {
+
+    const engage = s("slow_progress_engagement");
+
+    const detail = s("detail_revisit_frequency");
+
+    if (engage != null && engage <= 2 && detail != null && detail >= 4) {
+
+      flags.push(
+
+        "You described slow-progress engagement as low, but frequent detail revisits as high. This can be true if revisiting details feels satisfying even when the overall progress feels slow."
+
+      );
+
+    }
+
+  }
+
+
+
+  return flags;
+
+}
+
+
+
+/* ===========================
+
+   Risk-weight mapping tables (lightweight, explainable)
+
+   NOTE: These produce “risk-relevant signals”, not deterministic scores.
+
+   =========================== */
+
+function toVectorStage1(stage1Answers) {
+
+  // Normalize 1-5 -> 0-1
+
+  const vec = {};
+
+  Object.entries(stage1Answers || {}).forEach(([k, v]) => {
+
+    const raw = v?.value;
+
+    if (typeof raw === "number") vec[k] = clamp((raw - 1) / 4, 0, 1);
+
+  });
+
+  return vec;
+
+}
+
+
+
+function toVectorStage2(stage2Answers) {
+
+  // Categorical responses mapped to stable tokens
+
+  const vec = {};
+
+  Object.entries(stage2Answers || {}).forEach(([signal, value]) => {
+
+    vec[signal] = value ?? null;
+
+  });
+
+  return vec;
+
+}
+
+
+
+/* Produce descriptive insights (no “pass/fail”) */
+
+function buildInsights(skill, context, stage1Answers, stage2Answers, stage3Signals) {
+
+  const v1 = toVectorStage1(stage1Answers);
+
+  const flags = contradictionChecks(skill, stage1Answers, stage2Answers);
+
+
+
+  const observations = [];
+
+  const tips = [];
+
+  const resources = [];
+
+
+
+  // Generic scaffolding: describe preference bands (low/mid/high)
+
+  function describeBand(key, labelLow, labelMid, labelHigh) {
+
+    const x = v1[key];
+
+    if (x == null) return;
+
+    if (x <= 0.33) observations.push(labelLow);
+
+    else if (x <= 0.66) observations.push(labelMid);
+
+    else observations.push(labelHigh);
+
+  }
+
+
+
+  if (skill === "Coding") {
+
+    describeBand(
+
+      "abstraction_comfort",
+
+      "You indicated you prefer seeing practical anchors early when concepts feel abstract.",
+
+      "You indicated you can work with abstraction when there are occasional concrete examples.",
+
+      "You indicated you’re generally comfortable learning abstract concepts before immediate results."
+
+    );
+
+    describeBand(
+
+      "delayed_feedback_impact",
+
+      "Delayed feedback seems to have a lighter effect on your momentum.",
+
+      "Delayed feedback affects momentum sometimes, depending on context.",
+
+      "Delayed feedback has a noticeable effect on momentum; shorter feedback loops may help."
+
+    );
+
+    describeBand(
+
+      "self_directed_docs",
+
+      "You tend to prefer guided steps over documentation-first exploration.",
+
+      "You use documentation when needed, alongside other supports.",
+
+      "You’re comfortable using documentation and written references without step-by-step guidance."
+
+    );
+
+
+
+    tips.push(
+
+      "If motivation dips when feedback is delayed, try tighter loops: smaller tasks, quicker tests, or earlier checkpoints."
+
+    );
+
+    tips.push(
+
+      "When debugging is unclear, a short structured routine can help: isolate, log, simplify, then re-test."
+
+    );
+
+    resources.push("Practice approach: write a tiny failing test, then iterate until it passes.");
+
+    resources.push("Reference habit: keep a personal “debug notes” log with patterns you notice.");
+
+  }
+
+
+
+  // Provide context modulation (job vs hobby/fun)
+
+  const contextNote =
+
+    context === "Job"
+
+      ? "Context sensitivity: job settings often add deadlines and external expectations; you can use smaller checkpoints to keep feedback frequent."
+
+      : "Context sensitivity: hobby/fun settings often allow exploration pacing; you can lean into curiosity-driven iterations and playful experimentation.";
+
+
+
+  // Stage-3 (microtasks): descriptive signal integration
+
+  if (stage3Signals?.notes) {
+
+    observations.push(`Microtask notes: ${stage3Signals.notes}`);
+
+  }
+
+
+
+  return {
+
+    skill,
+
+    context,
+
+    observations,
+
+    tips,
+
+    resources,
+
+    consistencyFlags: flags,
+
+    patternVectors: {
+
+      stage1: v1,
+
+      stage2: toVectorStage2(stage2Answers),
+
+      stage3: stage3Signals ?? {},
+
+    },
+
+    contextNote,
+
+  };
+
+}
+
+
+
+/* ===========================
+
+   Local persistence for progress tracking
+
+   =========================== */
+
+const STORAGE_KEY = "scre_progress_v1";
+
+
+
+function loadProgress() {
+
+  const raw = safeJsonParse(localStorage.getItem(STORAGE_KEY) || "null", null);
+
+  return (
+
+    raw || {
+
+      sessions: [], // {id, startedAt, endedAt, skill, context, stageTimesMs, completedStages}
+
+      aggregates: {
+
+        bySkill: {}, // skill -> {sessions, totalTimeMs, completionCounts}
+
+      },
+
+    }
+
+  );
+
+}
+
+
+
+function saveProgress(p) {
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
+
+}
+
+
+
+/* ===========================
+
+   UI primitives
+
+   =========================== */
+
+function Row({ children, style }) {
+
+  return (
+
+    <div style={{ display: "flex", gap: 12, alignItems: "center", ...style }}>
+
+      {children}
+
+    </div>
+
+  );
+
+}
+
+
+
+function Spacer({ h = 12 }) {
+
+  return <div style={{ height: h }} />;
+
+}
+
+
+
+function SectionTitle({ title, subtitle }) {
+
+  return (
+
+    <div>
+
+      <div style={{ fontSize: 18, fontWeight: 800 }}>{title}</div>
+
+      {subtitle ? <div style={{ ...styles.small, marginTop: 4 }}>{subtitle}</div> : null}
+
+    </div>
+
+  );
+
+}
+
+
+
+function Likert({ value, onChange, labels = ["1", "2", "3", "4", "5"] }) {
+
+  return (
+
+    <Row style={{ gap: 10, flexWrap: "wrap" }}>
+
+      {labels.map((lab, idx) => {
+
+        const v = idx + 1;
+
+        const active = value === v;
+
+        return (
+
+          <button
+
+            key={lab}
+
+            type="button"
+
+            onClick={() => onChange(v)}
+
+            style={{
+
+              ...styles.button(active ? "primary" : "secondary"),
+
+              padding: "8px 10px",
+
+              borderRadius: 999,
+
+            }}
+
+          >
+
+            {lab}
+
+          </button>
+
+        );
+
+      })}
+
+    </Row>
+
+  );
+
+}
+
+
+
+/* ===========================
+
+   MicroTask module (scre/MicroTask)
+
+   - Fix ArrowRight usage: we use local ArrowRight defined above
+
+   - Tracks exploration notes (not “score”)
+
+   =========================== */
+
+export function MicroTask({ skill, onDone }) {
+
+  const [notes, setNotes] = React.useState("");
+
+
+
+  React.useEffect(() => {
+
+    Analytics.track("microtask_view", { skill });
+
+  }, [skill]);
+
+
+
+  return (
+
+    <div style={styles.card}>
+
+      <SectionTitle
+
+        title="Stage 3: Microtask Reflection"
+
+        subtitle="This stage captures how you approach small tasks and how you describe your process. It does not label you and is not pass/fail."
+
+      />
+
+      <Spacer />
+
+      <div style={styles.label}>Short note (optional)</div>
+
+      <textarea
+
+        value={notes}
+
+        onChange={(e) => setNotes(e.target.value)}
+
+        rows={4}
+
+        style={{ ...styles.input, resize: "vertical" }}
+
+        placeholder="Example: what you tried first, what you noticed, what you would try next."
+
+      />
+
+      <Spacer />
+
+      <button
+
+        type="button"
+
+        style={styles.button("primary")}
+
+        onClick={() => {
+
+          Analytics.track("microtask_done", { skill, hasNotes: Boolean(notes?.trim()) });
+
+          onDone({ notes: notes?.trim() || null });
+
+        }}
+
+      >
+
+        Continue <ArrowRight />
+
+      </button>
+
+    </div>
+
+  );
+
+}
+
+
+
+/* ===========================
+
+   Assessment Flow
+
+   =========================== */
+
+function Stage1({ skill, answers, setAnswers, context }) {
+
+  const qs = STAGE1_QUESTIONS[skill] || [];
+
+  return (
+
+    <div style={styles.card}>
+
+      <SectionTitle
+
+        title="Stage 1: Preparation & Exploration Signals"
+
+        subtitle="No intelligence labels. No pass/fail. This captures approach preferences that can shape learning experience."
+
+      />
+
+      <Spacer />
+
+      <div style={styles.pill}>Skill: {skill}</div>{" "}
+
+      <div style={styles.pill}>Context: {context}</div>
+
+      <Spacer h={16} />
+
+      {qs.map((q) => {
+
+        const current = answers?.[q.signal]?.value ?? null;
+
+        return (
+
+          <div key={q.id} style={{ padding: "12px 0" }}>
+
+            <div style={{ fontWeight: 700 }}>{q.prompt}</div>
+
+            <div style={{ ...styles.small, marginTop: 6, marginBottom: 8 }}>
+
+              {q.scaleLabel} • Choose 1–5
+
+            </div>
+
+            <Likert
+
+              value={current}
+
+              onChange={(v) =>
+
+                setAnswers((prev) => ({
+
+                  ...prev,
+
+                  [q.signal]: { value: v, updatedAt: nowMs() },
+
+                }))
+
+              }
+
+              labels={["1", "2", "3", "4", "5"]}
+
+            />
+
+            <hr style={{ ...styles.hr, marginTop: 12 }} />
+
+          </div>
+
+        );
+
+      })}
+
+    </div>
+
+  );
+
+}
+
+
+
+function Stage2({ skill, answers, setAnswers, context }) {
+
+  const qs = STAGE2_SITUATIONAL[skill] || [];
+
+  return (
+
+    <div style={styles.card}>
+
+      <SectionTitle
+
+        title="Stage 2: Situational Questions"
+
+        subtitle="These explore cognitive style and behavioral alignment with the skill. They generate risk-relevant signals, not scores."
+
+      />
+
+      <Spacer />
+
+      <div style={styles.pill}>Skill: {skill}</div>{" "}
+
+      <div style={styles.pill}>Context: {context}</div>
+
+      <Spacer h={16} />
+
+
+
+      {qs.map((q) => {
+
+        const current = answers?.[q.signal] ?? "";
+
+        const isText = q.type === "text";
+
+        return (
+
+          <div key={q.id} style={{ padding: "12px 0" }}>
+
+            <div style={{ fontWeight: 700 }}>{q.prompt}</div>
+
+            <Spacer h={8} />
+
+            {isText ? (
+
+              <input
+
+                value={current}
+
+                onChange={(e) => setAnswers((p) => ({ ...p, [q.signal]: e.target.value }))}
+
+                style={styles.input}
+
+                placeholder="Short response"
+
+              />
+
+            ) : (
+
+              <div style={{ display: "grid", gap: 8 }}>
+
+                {q.options.map((opt) => {
+
+                  const active = current === opt;
+
+                  return (
+
+                    <button
+
+                      type="button"
+
+                      key={opt}
+
+                      style={styles.button(active ? "primary" : "secondary")}
+
+                      onClick={() => setAnswers((p) => ({ ...p, [q.signal]: opt }))}
+
+                    >
+
+                      {opt}
+
+                    </button>
+
+                  );
+
+                })}
+
+              </div>
+
+            )}
+
+            <hr style={{ ...styles.hr, marginTop: 12 }} />
+
+          </div>
+
+        );
+
+      })}
+
+    </div>
+
+  );
+
+}
+
+
+
+function ReportView({ report, onStartNew, onExport }) {
+
+  return (
+
+    <div style={styles.card}>
+
+      <SectionTitle
+
+        title="Assessment Report"
+
+        subtitle="This report summarizes preparation/exploration signals and patterns. It does not assign labels and is not pass/fail."
+
+      />
+
+      <Spacer />
+
+      <div style={styles.pill}>Skill: {report.skill}</div>{" "}
+
+      <div style={styles.pill}>Context: {report.context}</div>
+
+      <Spacer h={16} />
+
+
+
+      <div style={{ fontWeight: 800, marginBottom: 8 }}>Descriptive insights</div>
+
+      <ul style={{ marginTop: 0 }}>
+
+        {report.observations.map((t, i) => (
+
+          <li key={i} style={{ marginBottom: 6 }}>
+
+            {t}
+
+          </li>
+
+        ))}
+
+      </ul>
+
+
+
+      <div style={{ fontWeight: 800, marginBottom: 8 }}>Optional next-step tips</div>
+
+      <ul style={{ marginTop: 0 }}>
+
+        {report.tips.map((t, i) => (
+
+          <li key={i} style={{ marginBottom: 6 }}>
+
+            {t}
+
+          </li>
+
+        ))}
+
+      </ul>
+
+
+
+      <div style={{ fontWeight: 800, marginBottom: 8 }}>Resources (suggestions)</div>
+
+      <ul style={{ marginTop: 0 }}>
+
+        {report.resources.map((t, i) => (
+
+          <li key={i} style={{ marginBottom: 6 }}>
+
+            {t}
+
+          </li>
+
+        ))}
+
+      </ul>
+
+
+
+      <div style={{ fontWeight: 800, marginBottom: 8 }}>Context sensitivity</div>
+
+      <div style={{ ...styles.small, marginBottom: 12 }}>{report.contextNote}</div>
+
+
+
+      {report.consistencyFlags?.length ? (
+
+        <>
+
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>
+
+            Consistency & contradiction checks
+
+          </div>
+
+          <ul style={{ marginTop: 0 }}>
+
+            {report.consistencyFlags.map((f, i) => (
+
+              <li key={i} style={{ marginBottom: 6 }}>
+
+                {f}
+
+              </li>
+
+            ))}
+
+          </ul>
+
+        </>
+
+      ) : (
+
+        <div style={{ ...styles.small, marginBottom: 12 }}>
+
+          Consistency checks: no notable contradictions detected from the current responses.
+
+        </div>
+
+      )}
+
+
+
+      <details style={{ marginTop: 10 }}>
+
+        <summary style={{ cursor: "pointer", fontWeight: 800 }}>
+
+          Pattern vectors (for engine use)
+
+        </summary>
+
+        <pre style={{ whiteSpace: "pre-wrap" }}>
+
+          {JSON.stringify(report.patternVectors, null, 2)}
+
+        </pre>
+
+      </details>
+
+
+
+      <Spacer />
+
+      <Row style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
+
+        {/* FIX: Start New Assessment button theme color (not white) */}
+
+        <button type="button" style={styles.button("primary")} onClick={onStartNew}>
+
+          Start New Assessment <ArrowRight />
+
+        </button>
+
+
+
+        {/* FIX: Export Report button theme color + working export */}
+
+        <button type="button" style={styles.button("secondary")} onClick={onExport}>
+
+          Export Report
+
+        </button>
+
+      </Row>
+
+    </div>
+
+  );
+
+}
+
+
+
+/* ===========================
+
+   Progress Page
+
+   - completion rates
+
+   - time spent
+
+   - descriptive trends (no evaluative framing)
+
+   =========================== */
+
+function ProgressPage({ progress }) {
+
+  const sessions = progress.sessions || [];
+
+  const bySkill = progress.aggregates?.bySkill || {};
+
+
+
+  return (
+
+    <div style={styles.card}>
+
+      <SectionTitle
+
+        title="Progress"
+
+        subtitle="Tracks completion and time spent across assessments. This is descriptive history for planning and exploration."
+
+      />
+
+      <Spacer />
+
+      <div style={{ display: "grid", gap: 10 }}>
+
+        {SKILLS.map((skill) => {
+
+          const agg = bySkill[skill] || {
+
+            sessions: 0,
+
+            totalTimeMs: 0,
+
+            completionCounts: { stage1: 0, stage2: 0, stage3: 0, report: 0 },
+
+          };
+
+          const minutes = Math.round((agg.totalTimeMs || 0) / 60000);
+
+          return (
+
+            <div key={skill} style={{ ...styles.card, padding: 12 }}>
+
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+
+                <div style={{ fontWeight: 800 }}>{skill}</div>
+
+                <div style={styles.pill}>{agg.sessions} sessions</div>
+
+              </div>
+
+              <Spacer h={8} />
+
+              <div style={styles.small}>Time spent: ~{minutes} min</div>
+
+              <div style={styles.small}>
+
+                Completed stages (count): Stage 1: {agg.completionCounts.stage1 || 0} •
+
+                Stage 2: {agg.completionCounts.stage2 || 0} • Stage 3:{" "}
+
+                {agg.completionCounts.stage3 || 0} • Report:{" "}
+
+                {agg.completionCounts.report || 0}
+
+              </div>
+
+            </div>
+
+          );
+
+        })}
+
+      </div>
+
+
+
+      <Spacer h={18} />
+
+      <div style={{ fontWeight: 800, marginBottom: 8 }}>Recent sessions</div>
+
+      <div style={{ display: "grid", gap: 10 }}>
+
+        {sessions
+
+          .slice()
+
+          .reverse()
+
+          .slice(0, 8)
+
+          .map((s) => {
+
+            const totalMs =
+
+              (s.stageTimesMs?.stage1 || 0) +
+
+              (s.stageTimesMs?.stage2 || 0) +
+
+              (s.stageTimesMs?.stage3 || 0);
+
+            const mins = Math.max(1, Math.round(totalMs / 60000));
+
+            return (
+
+              <div key={s.id} style={{ ...styles.card, padding: 12 }}>
+
+                <div style={{ fontWeight: 800 }}>
+
+                  {s.skill} • {s.context}
+
+                </div>
+
+                <div style={styles.small}>
+
+                  Time spent: ~{mins} min • Stages completed:{" "}
+
+                  {Object.keys(s.completedStages || {})
+
+                    .filter((k) => s.completedStages[k])
+
+                    .join(", ") || "—"}
+
+                </div>
+
+              </div>
+
+            );
+
+          })}
+
+      </div>
+
+    </div>
+
+  );
+
+}
+
+
+
+/* ===========================
+
+   Main App (single-file routing)
+
+   =========================== */
+
+export default function App() {
+
+  const [route, setRoute] = React.useState("assessment"); // "assessment" | "progress"
+
+  const [skill, setSkill] = React.useState("Coding");
+
+  const [context, setContext] = React.useState("Job");
+
+
+
+  const [stage, setStage] = React.useState(1); // 1,2,3,4(report)
+
+  const [stage1Answers, setStage1Answers] = React.useState({});
+
+  const [stage2Answers, setStage2Answers] = React.useState({});
+
+  const [stage3Signals, setStage3Signals] = React.useState({});
+
+
+
+  const [report, setReport] = React.useState(null);
+
+
+
+  // Progress tracking session
+
+  const [sessionId, setSessionId] = React.useState(null);
+
+  const [stageStartAt, setStageStartAt] = React.useState(nowMs());
+
+  const [progress, setProgress] = React.useState(() => loadProgress());
+
+
+
+  function beginSession() {
+
+    const id = `sess_${nowMs()}_${Math.random().toString(16).slice(2)}`;
+
+    setSessionId(id);
+
+    setStageStartAt(nowMs());
+
+    Analytics.track("session_start", { id, skill, context });
+
+    return id;
+
+  }
+
+
+
+  function endStage(stageKey) {
+
+    const endAt = nowMs();
+
+    const elapsed = Math.max(0, endAt - stageStartAt);
+
+    setStageStartAt(endAt);
+
+
+
+    setProgress((prev) => {
+
+      const next = structuredClone(prev);
+
+      const sess =
+
+        next.sessions.find((x) => x.id === sessionId) ||
+
+        (() => {
+
+          const s = {
+
+            id: sessionId,
+
+            startedAt: nowMs(),
+
+            endedAt: null,
+
+            skill,
+
+            context,
+
+            stageTimesMs: { stage1: 0, stage2: 0, stage3: 0 },
+
+            completedStages: { stage1: false, stage2: false, stage3: false, report: false },
+
+          };
+
+          next.sessions.push(s);
+
+          return s;
+
+        })();
+
+
+
+      sess.stageTimesMs[stageKey] = (sess.stageTimesMs[stageKey] || 0) + elapsed;
+
+      sess.completedStages[stageKey] = true;
+
+
+
+      // update aggregates
+
+      next.aggregates.bySkill = next.aggregates.bySkill || {};
+
+      const agg =
+
+        next.aggregates.bySkill[skill] ||
+
+        (next.aggregates.bySkill[skill] = {
+
+          sessions: 0,
+
+          totalTimeMs: 0,
+
+          completionCounts: { stage1: 0, stage2: 0, stage3: 0, report: 0 },
+
+        });
+
+
+
+      // ensure sessions count only once per session
+
+      if (!sess._countedForAgg) {
+
+        agg.sessions += 1;
+
+        sess._countedForAgg = true;
+
+      }
+
+
+
+      agg.totalTimeMs += elapsed;
+
+      agg.completionCounts[stageKey] = (agg.completionCounts[stageKey] || 0) + 1;
+
+
+
+      saveProgress(next);
+
+      return next;
+
+    });
+
+  }
+
+
+
+  React.useEffect(() => {
+
+    if (!sessionId && route === "assessment") beginSession();
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+  }, [route]);
+
+
+
+  function resetAssessment() {
+
+    Analytics.track("assessment_reset", { skill, context });
+
+    setStage(1);
+
+    setStage1Answers({});
+
+    setStage2Answers({});
+
+    setStage3Signals({});
+
+    setReport(null);
+
+    const id = beginSession();
+
+    setSessionId(id);
+
+  }
+
+
+
+  function finalizeReport() {
+
+    const rep = buildInsights(skill, context, stage1Answers, stage2Answers, stage3Signals);
+
+    setReport(rep);
+
+
+
+    // mark report stage in progress
+
+    setProgress((prev) => {
+
+      const next = structuredClone(prev);
+
+      const sess = next.sessions.find((x) => x.id === sessionId);
+
+      if (sess) {
+
+        sess.completedStages.report = true;
+
+        next.aggregates.bySkill = next.aggregates.bySkill || {};
+
+        const agg = next.aggregates.bySkill[skill];
+
+        if (agg) agg.completionCounts.report = (agg.completionCounts.report || 0) + 1;
+
+        sess.endedAt = nowMs();
+
+      }
+
+      saveProgress(next);
+
+      return next;
+
+    });
+
+
+
+    Analytics.track("report_ready", { skill, context });
+
+  }
+
+
+
+  function exportReport() {
+
+    if (!report) return;
+
+    const payload = {
+
+      version: "scre_report_v1",
+
+      createdAt: new Date().toISOString(),
+
+      report,
+
+    };
+
+    downloadTextFile(
+
+      `SCRE_Report_${report.skill.replace(/\s+/g, "_")}_${Date.now()}.json`,
+
+      JSON.stringify(payload, null, 2),
+
+      "application/json"
+
+    );
+
+    Analytics.track("report_export", { skill: report.skill, context: report.context });
+
+  }
+
+
+
+  const canContinueStage1 = () => {
+
+    const qs = STAGE1_QUESTIONS[skill] || [];
+
+    return qs.every((q) => typeof stage1Answers?.[q.signal]?.value === "number");
+
+  };
+
+
+
+  const canContinueStage2 = () => {
+
+    const qs = STAGE2_SITUATIONAL[skill] || [];
+
+    return qs.every((q) => {
+
+      const v = stage2Answers?.[q.signal];
+
+      if (q.type === "text") return typeof v === "string" && v.trim().length > 0;
+
+      return typeof v === "string" && v.length > 0;
+
+    });
+
+  };
+
+
+
+  return (
+
+    <div style={styles.app}>
+
+      <div style={styles.nav}>
+
+        <div style={{ fontWeight: 900, letterSpacing: 0.3 }}>SCRE</div>
+
+        <button
+
+          type="button"
+
+          style={styles.navBtn(route === "assessment")}
+
+          onClick={() => setRoute("assessment")}
+
+        >
+
+          Assessment
+
+        </button>
+
+        <button
+
+          type="button"
+
+          style={styles.navBtn(route === "progress")}
+
+          onClick={() => setRoute("progress")}
+
+        >
+
+          Progress
+
+        </button>
+
+        <div style={{ flex: 1 }} />
+
+        <div style={styles.pill}>
+
+          Analytics: {Analytics.enabled ? "On" : "Off"}
+
+        </div>
+
+      </div>
+
+
+
+      <div style={styles.container}>
+
+        {route === "progress" ? (
+
+          <ProgressPage progress={progress} />
+
+        ) : (
+
+          <div style={{ display: "grid", gap: 12 }}>
+
+            <div style={styles.card}>
+
+              <SectionTitle
+
+                title="Setup"
+
+                subtitle="Choose a skill and context. The assessment focuses on approach and exploration signals."
+
+              />
+
+              <Spacer />
+
+              <Row style={{ flexWrap: "wrap" }}>
+
+                <div style={{ minWidth: 240, flex: 1 }}>
+
+                  <div style={styles.label}>Skill</div>
+
+                  <select
+
+                    value={skill}
+
+                    onChange={(e) => {
+
+                      setSkill(e.target.value);
+
+                      resetAssessment();
+
+                    }}
+
+                    style={styles.input}
+
+                  >
+
+                    {SKILLS.map((s) => (
+
+                      <option value={s} key={s}>
+
+                        {s}
+
+                      </option>
+
+                    ))}
+
+                  </select>
+
+                </div>
+
+
+
+                <div style={{ minWidth: 240, flex: 1 }}>
+
+                  <div style={styles.label}>Context</div>
+
+                  <select
+
+                    value={context}
+
+                    onChange={(e) => {
+
+                      setContext(e.target.value);
+
+                      resetAssessment();
+
+                    }}
+
+                    style={styles.input}
+
+                  >
+
+                    {CONTEXTS.map((c) => (
+
+                      <option value={c} key={c}>
+
+                        {c}
+
+                      </option>
+
+                    ))}
+
+                  </select>
+
+                </div>
+
+              </Row>
+
+              <Spacer />
+
+              <div style={styles.small}>
+
+                Stage flow: Stage 1 (signals) → Stage 2 (situations) → Stage 3
+
+                (microtask reflection) → Report
+
+              </div>
+
+            </div>
+
+
+
+            {stage === 1 ? (
+
+              <>
+
+                <Stage1
+
+                  skill={skill}
+
+                  answers={stage1Answers}
+
+                  setAnswers={setStage1Answers}
+
+                  context={context}
+
+                />
+
+                <Row style={{ justifyContent: "flex-end" }}>
+
+                  <button
+
+                    type="button"
+
+                    style={styles.button("primary")}
+
+                    onClick={() => {
+
+                      if (!canContinueStage1()) return;
+
+                      endStage("stage1");
+
+                      setStage(2);
+
+                      Analytics.track("stage1_complete", { skill, context });
+
+                    }}
+
+                  >
+
+                    Continue <ArrowRight />
+
+                  </button>
+
+                </Row>
+
+              </>
+
+            ) : null}
+
+
+
+            {stage === 2 ? (
+
+              <>
+
+                <Stage2
+
+                  skill={skill}
+
+                  answers={stage2Answers}
+
+                  setAnswers={setStage2Answers}
+
+                  context={context}
+
+                />
+
+                <Row style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
+
+                  <button
+
+                    type="button"
+
+                    style={styles.button("secondary")}
+
+                    onClick={() => setStage(1)}
+
+                  >
+
+                    Back
+
+                  </button>
+
+                  <button
+
+                    type="button"
+
+                    style={styles.button("primary")}
+
+                    onClick={() => {
+
+                      if (!canContinueStage2()) return;
+
+                      endStage("stage2");
+
+                      setStage(3);
+
+                      Analytics.track("stage2_complete", { skill, context });
+
+                    }}
+
+                  >
+
+                    Continue <ArrowRight />
+
+                  </button>
+
+                </Row>
+
+              </>
+
+            ) : null}
+
+
+
+            {stage === 3 ? (
+
+              <>
+
+                <MicroTask
+
+                  skill={skill}
+
+                  onDone={(signals) => {
+
+                    setStage3Signals(signals || {});
+
+                    endStage("stage3");
+
+                    setStage(4);
+
+                    finalizeReport();
+
+                  }}
+
+                />
+
+              </>
+
+            ) : null}
+
+
+
+            {stage === 4 && report ? (
+
+              <ReportView
+
+                report={report}
+
+                onStartNew={() => resetAssessment()}
+
+                onExport={() => exportReport()}
+
+              />
+
+            ) : null}
+
+          </div>
+
+        )}
+
+      </div>
+
+    </div>
+
+  );
+
+}
+
+
+
+/* ===========================
+
+   IMPORTANT INTEGRATION NOTES
+
+   ===========================
+
+   1) ArrowRight is defined locally above; remove any old imports like:
+
+      import { ArrowRight } from "lucide-react";
+
+      If you still prefer lucide, keep lucide import but ensure it's imported everywhere.
+
+      This implementation avoids runtime “ArrowRight is not defined”.
+
+
+
+   2) Replace your existing Stage-1 question bank with STAGE1_QUESTIONS above.
+
+      Stage-2 situational bank is STAGE2_SITUATIONAL above (kept + added properly).
+
+
+
+   3) Export Report: downloads JSON (reliable across browsers). If you need PDF later,
+
+      you can render HTML and print-to-PDF, but JSON export is the most stable baseline.
+
+
+
+   4) Button visibility fix: “Start New Assessment” uses primary accent, not white.
+
+      “Export Report” uses secondary themed styling.
+
+
+
+   5) Progress page: stored in localStorage. If you need server persistence later,
+
+      keep schema compatibility (nullable fields, additive changes).
+
+*//* 
+
+  ===========================
+
+  SCRE Cognitive Assessment UI
+
+  ===========================
+
+  Drop-in React (JSX) implementation that:
+
+  - Defines ArrowRight locally (fixes missing import/render errors)
+
+  - Replaces Stage-1 questions with NEW QUESTIONS per skill (Likert/scale)
+
+  - Keeps Stage-2 situational questions AND adds them properly (per skill)
+
+  - Adds contradiction/consistency checks (anti-gaming)
+
+  - Produces descriptive (not evaluative) insights + pattern vectors (not “pass/fail”)
+
+  - Optional analytics (off by default)
+
+  - Fixes button visibility (Start New Assessment + Export Report)
+
+  - Ensures export works (downloads JSON report)
+
+  - Adds Progress page in nav: time spent, completion rates, descriptive trends
+
+
+
+  NOTE:
+
+  - This code intentionally tracks preparation/exploration, not “outcomes”.
+
+  - No success/failure framing. No “you are bad/good” language.
+
+*/
+
+
+
+/* ===========================
+
+   Optional analytics (OFF by default)
+
+   =========================== */
+
+const Analytics = (() => {
+
+  const enabled = (() => {
+
+    try {
+
+      return localStorage.getItem("scre_analytics_enabled") === "true";
+
+    } catch {
+
+      return false;
+
+    }
+
+  })();
+
+
+
+  function track(eventName, payload = {}) {
+
+    if (!enabled) return;
+
+    // Optional: plug into your analytics provider
+
+    // window.myAnalytics?.track?.(eventName, payload);
+
+    console.log("[analytics]", eventName, payload);
+
+  }
+
+
+
+  return { enabled, track };
+
+})();
+
+
+
+/* ===========================
+
+   Utilities
+
+   =========================== */
+
+const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+
+
+
+function nowMs() {
+
+  return Date.now();
+
+}
+
+
+
+function safeJsonParse(s, fallback) {
+
+  try {
+
+    return JSON.parse(s);
+
+  } catch {
+
+    return fallback;
+
+  }
+
+}
+
+
+
+function downloadTextFile(filename, text, mime = "application/json") {
+
+  const blob = new Blob([text], { type: mime });
+
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+
+  a.href = url;
+
+  a.download = filename;
+
+  a.click();
+
+  URL.revokeObjectURL(url);
+
+}
+
+
+
+/* ===========================
+
+   Theme helpers
+
+   =========================== */
+
+const styles = {
+
+  app: {
+
+    fontFamily:
+
+      'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif',
+
+    background: "var(--bg, #0b1220)",
+
+    color: "var(--fg, #e8eefc)",
+
+    minHeight: "100vh",
+
+  },
+
+  container: { maxWidth: 980, margin: "0 auto", padding: 16 },
+
+  card: {
+
+    background: "rgba(255,255,255,0.06)",
+
+    border: "1px solid rgba(255,255,255,0.12)",
+
+    borderRadius: 14,
+
+    padding: 16,
+
+    boxShadow: "0 10px 25px rgba(0,0,0,0.25)",
+
+  },
+
+  nav: {
+
+    display: "flex",
+
+    gap: 10,
+
+    alignItems: "center",
+
+    padding: "12px 16px",
+
+    position: "sticky",
+
+    top: 0,
+
+    background: "rgba(11,18,32,0.8)",
+
+    backdropFilter: "blur(12px)",
+
+    borderBottom: "1px solid rgba(255,255,255,0.12)",
+
+    zIndex: 10,
+
+  },
+
+  navBtn: (active) => ({
+
+    padding: "8px 12px",
+
+    borderRadius: 10,
+
+    border: "1px solid rgba(255,255,255,0.14)",
+
+    background: active ? "rgba(255,255,255,0.12)" : "transparent",
+
+    color: "var(--fg, #e8eefc)",
+
+    cursor: "pointer",
+
+  }),
+
+  button: (variant = "primary") => {
+
+    const base = {
+
+      display: "inline-flex",
+
+      alignItems: "center",
+
+      gap: 8,
+
+      padding: "10px 14px",
+
+      borderRadius: 12,
+
+      border: "1px solid rgba(255,255,255,0.14)",
+
+      cursor: "pointer",
+
+      fontWeight: 600,
+
+    };
+
+    if (variant === "primary") {
+
+      return {
+
+        ...base,
+
+        background: "var(--accent, #7c5cff)", // themed (not white)
+
+        color: "white",
+
+        border: "1px solid rgba(255,255,255,0.08)",
+
+      };
+
+    }
+
+    if (variant === "secondary") {
+
+      return {
+
+        ...base,
+
+        background: "rgba(255,255,255,0.10)",
+
+        color: "var(--fg, #e8eefc)",
+
+      };
+
+    }
+
+    if (variant === "ghost") {
+
+      return {
+
+        ...base,
+
+        background: "transparent",
+
+        color: "var(--fg, #e8eefc)",
+
+      };
+
+    }
+
+    return base;
+
+  },
+
+  pill: {
+
+    display: "inline-flex",
+
+    alignItems: "center",
+
+    padding: "6px 10px",
+
+    borderRadius: 999,
+
+    border: "1px solid rgba(255,255,255,0.14)",
+
+    background: "rgba(255,255,255,0.08)",
+
+    fontSize: 12,
+
+  },
+
+  hr: { border: 0, borderTop: "1px solid rgba(255,255,255,0.12)" },
+
+  label: { fontSize: 12, opacity: 0.8, marginBottom: 6 },
+
+  input: {
+
+    width: "100%",
+
+    padding: "10px 12px",
+
+    borderRadius: 12,
+
+    border: "1px solid rgba(255,255,255,0.14)",
+
+    background: "rgba(0,0,0,0.25)",
+
+    color: "var(--fg, #e8eefc)",
+
+    outline: "none",
+
+  },
+
+  small: { fontSize: 12, opacity: 0.85 },
+
+};
+
+
+
+/* ===========================
+
+   ArrowRight (FIX)
+
+   ===========================
+
+   Sahaj asked: define ArrowRight wherever used.
+
+   This ensures no missing icon import causes runtime error.
+
+*/
+
+export function ArrowRight({ size = 18 }) {
+
+  return (
+
+    <svg
+
+      width={size}
+
+      height={size}
+
+      viewBox="0 0 24 24"
+
+      fill="none"
+
+      aria-hidden="true"
+
+    >
+
+      <path
+
+        d="M5 12h12"
+
+        stroke="currentColor"
+
+        strokeWidth="2"
+
+        strokeLinecap="round"
+
+      />
+
+      <path
+
+        d="M13 6l6 6-6 6"
+
+        stroke="currentColor"
+
+        strokeWidth="2"
+
+        strokeLinecap="round"
+
+        strokeLinejoin="round"
+
+      />
+
+    </svg>
+
+  );
+
+}
+
+
+
+/* ===========================
+
+   Data model (GLOBAL STABILITY)
+
+   - Nullable fields allowed
+
+   - Backward compatible structures
+
+   =========================== */
+
+const SKILLS = [
+
+  "Coding",
+
+  "Data Science",
+
+  "Marketing",
+
+  "Design",
+
+  "Creative Writing",
+
+  "Public Speaking",
+
+  "Video Editing",
+
+  "Music Production",
+
+  "Entrepreneurship",
+
+  "Teaching",
+
+  "Product Management",
+
+];
+
+
+
+const CONTEXTS = ["Job", "Hobby/Fun"];
+
+
+
+/* Stage-1 (NEW QUESTIONS) — replace existing */
+
+const STAGE1_QUESTIONS = {
+
+  Coding: [
+
+    {
+
+      id: "code_1",
+
+      type: "scale",
+
+      prompt:
+
+        "When your code does not work and the reason is unclear, how long are you usually willing to continue trying before feeling mentally exhausted?",
+
+      scaleLabel: "Comfort scale",
+
+      signal: "debugging_endurance_time",
+
+    },
+
+    {
+
+      id: "code_2",
+
+      type: "frequency",
+
+      prompt:
+
+        "How often do you continue working on a problem even after multiple failed attempts?",
+
+      scaleLabel: "Frequency",
+
+      signal: "persistence_frequency",
+
+    },
+
+    {
+
+      id: "code_3",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you learning programming concepts that feel abstract before you see practical results?",
+
+      scaleLabel: "Comfort",
+
+      signal: "abstraction_comfort",
+
+    },
+
+    {
+
+      id: "code_4",
+
+      type: "impact",
+
+      prompt:
+
+        "When feedback or results are delayed, how strongly does it affect your motivation to continue?",
+
+      scaleLabel: "Impact intensity",
+
+      signal: "delayed_feedback_impact",
+
+    },
+
+    {
+
+      id: "code_5",
+
+      type: "frequency",
+
+      prompt:
+
+        "How often do you rely on documentation or written resources without step-by-step guidance?",
+
+      scaleLabel: "Frequency",
+
+      signal: "self_directed_docs",
+
+    },
+
+    {
+
+      id: "code_6",
+
+      type: "likelihood",
+
+      prompt:
+
+        "When a solution works but feels inefficient, how likely are you to revisit and improve it?",
+
+      scaleLabel: "Likelihood",
+
+      signal: "refinement_likelihood",
+
+    },
+
+  ],
+
+  "Data Science": [
+
+    {
+
+      id: "ds_1",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you working on problems where there is no clearly defined “correct” answer?",
+
+      scaleLabel: "Comfort",
+
+      signal: "no_single_answer_comfort",
+
+    },
+
+    {
+
+      id: "ds_2",
+
+      type: "scale",
+
+      prompt:
+
+        "When insights take time to emerge from data, how well are you able to stay engaged?",
+
+      scaleLabel: "Comfort",
+
+      signal: "slow_insight_engagement",
+
+    },
+
+    {
+
+      id: "ds_3",
+
+      type: "frequency",
+
+      prompt: "How often do you revise your assumptions after seeing new evidence?",
+
+      scaleLabel: "Frequency",
+
+      signal: "assumption_revision_frequency",
+
+    },
+
+    {
+
+      id: "ds_4",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you making decisions based on probabilistic or uncertain outcomes?",
+
+      scaleLabel: "Comfort",
+
+      signal: "probabilistic_decision_comfort",
+
+    },
+
+    {
+
+      id: "ds_5",
+
+      type: "likelihood",
+
+      prompt:
+
+        "When results contradict your expectations, how likely are you to explore alternative explanations?",
+
+      scaleLabel: "Likelihood",
+
+      signal: "alt_explanation_likelihood",
+
+    },
+
+    {
+
+      id: "ds_6",
+
+      type: "impact",
+
+      prompt:
+
+        "How strongly does delayed validation affect your motivation to continue working?",
+
+      scaleLabel: "Impact",
+
+      signal: "delayed_validation_impact",
+
+    },
+
+  ],
+
+  Marketing: [
+
+    {
+
+      id: "mkt_1",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you testing ideas that may receive negative or unpredictable public responses?",
+
+      scaleLabel: "Comfort",
+
+      signal: "public_uncertainty_comfort",
+
+    },
+
+    {
+
+      id: "mkt_2",
+
+      type: "scale",
+
+      prompt:
+
+        "When feedback is critical or unexpected, how well are you able to adapt without losing momentum?",
+
+      scaleLabel: "Comfort",
+
+      signal: "critical_feedback_adaptability",
+
+    },
+
+    {
+
+      id: "mkt_3",
+
+      type: "frequency",
+
+      prompt:
+
+        "How often are you willing to discard strategies that stop working, even after investing effort?",
+
+      scaleLabel: "Frequency",
+
+      signal: "strategy_discard_frequency",
+
+    },
+
+    {
+
+      id: "mkt_4",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you making decisions without having complete data?",
+
+      scaleLabel: "Comfort",
+
+      signal: "incomplete_data_comfort",
+
+    },
+
+    {
+
+      id: "mkt_5",
+
+      type: "impact",
+
+      prompt:
+
+        "How motivating do you find experimentation compared to guaranteed outcomes?",
+
+      scaleLabel: "Preference intensity",
+
+      signal: "experimentation_preference",
+
+    },
+
+  ],
+
+  Design: [
+
+    {
+
+      id: "des_1",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you receiving feedback that is subjective or conflicting?",
+
+      scaleLabel: "Comfort",
+
+      signal: "subjective_feedback_comfort",
+
+    },
+
+    {
+
+      id: "des_2",
+
+      type: "scale",
+
+      prompt:
+
+        "When asked to revise work multiple times, how well do you maintain motivation?",
+
+      scaleLabel: "Comfort",
+
+      signal: "revision_motivation",
+
+    },
+
+    {
+
+      id: "des_3",
+
+      type: "frequency",
+
+      prompt:
+
+        "How often do you iterate on work that already meets basic requirements?",
+
+      scaleLabel: "Frequency",
+
+      signal: "extra_iteration_frequency",
+
+    },
+
+    {
+
+      id: "des_4",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you starting with rough drafts instead of polished outputs?",
+
+      scaleLabel: "Comfort",
+
+      signal: "rough_draft_comfort",
+
+    },
+
+    {
+
+      id: "des_5",
+
+      type: "scale",
+
+      prompt:
+
+        "When opinions differ strongly, how easily can you separate feedback from personal judgment?",
+
+      scaleLabel: "Ease",
+
+      signal: "ego_detachment_ease",
+
+    },
+
+  ],
+
+  "Creative Writing": [
+
+    {
+
+      id: "cw_1",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you writing without immediate feedback or validation?",
+
+      scaleLabel: "Comfort",
+
+      signal: "no_immediate_feedback_comfort",
+
+    },
+
+    {
+
+      id: "cw_2",
+
+      type: "frequency",
+
+      prompt: "How often do you revise or rewrite significant portions of your work?",
+
+      scaleLabel: "Frequency",
+
+      signal: "revision_frequency",
+
+    },
+
+    {
+
+      id: "cw_3",
+
+      type: "likelihood",
+
+      prompt:
+
+        "When you feel uncertain about quality, how likely are you to continue writing anyway?",
+
+      scaleLabel: "Likelihood",
+
+      signal: "continue_under_uncertainty",
+
+    },
+
+    {
+
+      id: "cw_4",
+
+      type: "impact",
+
+      prompt:
+
+        "How strongly do emotional fluctuations affect your ability to keep writing?",
+
+      scaleLabel: "Impact",
+
+      signal: "emotion_impact_writing",
+
+    },
+
+    {
+
+      id: "cw_5",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you developing ideas gradually rather than all at once?",
+
+      scaleLabel: "Comfort",
+
+      signal: "gradual_idea_development",
+
+    },
+
+  ],
+
+  "Public Speaking": [
+
+    {
+
+      id: "ps_1",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you speaking in front of unfamiliar or evaluative audiences?",
+
+      scaleLabel: "Comfort",
+
+      signal: "audience_exposure_comfort",
+
+    },
+
+    {
+
+      id: "ps_2",
+
+      type: "scale",
+
+      prompt:
+
+        "When you make a visible mistake while speaking, how quickly are you able to recover?",
+
+      scaleLabel: "Recovery ease",
+
+      signal: "mistake_recovery",
+
+    },
+
+    {
+
+      id: "ps_3",
+
+      type: "frequency",
+
+      prompt: "How often do you practice aloud rather than only mentally?",
+
+      scaleLabel: "Frequency",
+
+      signal: "aloud_practice_frequency",
+
+    },
+
+    {
+
+      id: "ps_4",
+
+      type: "impact",
+
+      prompt:
+
+        "How strongly does immediate audience feedback affect your focus during delivery?",
+
+      scaleLabel: "Impact",
+
+      signal: "audience_feedback_impact",
+
+    },
+
+    {
+
+      id: "ps_5",
+
+      type: "likelihood",
+
+      prompt:
+
+        "After a performance that felt off, how willing are you to speak again soon?",
+
+      scaleLabel: "Willingness",
+
+      signal: "re_engage_willingness",
+
+    },
+
+  ],
+
+  "Video Editing": [
+
+    {
+
+      id: "ve_1",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you working on tasks that require repeated fine-tuning?",
+
+      scaleLabel: "Comfort",
+
+      signal: "fine_tuning_comfort",
+
+    },
+
+    {
+
+      id: "ve_2",
+
+      type: "scale",
+
+      prompt: "When progress feels slow, how well do you stay engaged?",
+
+      scaleLabel: "Comfort",
+
+      signal: "slow_progress_engagement",
+
+    },
+
+    {
+
+      id: "ve_3",
+
+      type: "frequency",
+
+      prompt: "How often do you revisit small details to improve overall quality?",
+
+      scaleLabel: "Frequency",
+
+      signal: "detail_revisit_frequency",
+
+    },
+
+    {
+
+      id: "ve_4",
+
+      type: "impact",
+
+      prompt: "How strongly does delayed feedback affect your motivation?",
+
+      scaleLabel: "Impact",
+
+      signal: "delayed_feedback_impact",
+
+    },
+
+    {
+
+      id: "ve_5",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you deciding when work is “good enough” to finalize?",
+
+      scaleLabel: "Comfort",
+
+      signal: "completion_threshold_comfort",
+
+    },
+
+  ],
+
+  "Music Production": [
+
+    {
+
+      id: "mp_1",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you repeating small sections many times to improve quality?",
+
+      scaleLabel: "Comfort",
+
+      signal: "micro_iteration_comfort",
+
+    },
+
+    {
+
+      id: "mp_2",
+
+      type: "scale",
+
+      prompt:
+
+        "When improvement is not immediately noticeable, how well do you stay motivated?",
+
+      scaleLabel: "Comfort",
+
+      signal: "slow_improvement_motivation",
+
+    },
+
+    {
+
+      id: "mp_3",
+
+      type: "frequency",
+
+      prompt:
+
+        "How often do you experiment with variations before settling on a final version?",
+
+      scaleLabel: "Frequency",
+
+      signal: "variation_experiment_frequency",
+
+    },
+
+    {
+
+      id: "mp_4",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you working independently without frequent feedback?",
+
+      scaleLabel: "Comfort",
+
+      signal: "independent_work_comfort",
+
+    },
+
+    {
+
+      id: "mp_5",
+
+      type: "scale",
+
+      prompt: "How patient are you with technical setup and troubleshooting?",
+
+      scaleLabel: "Comfort",
+
+      signal: "tech_troubleshooting_patience",
+
+    },
+
+    {
+
+      id: "mp_6",
+
+      type: "likelihood",
+
+      prompt:
+
+        "How willing are you to refine details that others may not immediately notice?",
+
+      scaleLabel: "Willingness",
+
+      signal: "subtle_refinement_willingness",
+
+    },
+
+  ],
+
+  Entrepreneurship: [
+
+    {
+
+      id: "ent_1",
+
+      type: "scale",
+
+      prompt: "How comfortable are you making decisions with incomplete information?",
+
+      scaleLabel: "Comfort",
+
+      signal: "incomplete_info_decision",
+
+    },
+
+    {
+
+      id: "ent_2",
+
+      type: "scale",
+
+      prompt:
+
+        "When plans fail, how well are you able to continue without losing motivation?",
+
+      scaleLabel: "Resilience",
+
+      signal: "plan_failure_resilience",
+
+    },
+
+    {
+
+      id: "ent_3",
+
+      type: "frequency",
+
+      prompt: "How often do you manage multiple responsibilities simultaneously?",
+
+      scaleLabel: "Frequency",
+
+      signal: "multi_responsibility_frequency",
+
+    },
+
+    {
+
+      id: "ent_4",
+
+      type: "scale",
+
+      prompt: "How comfortable are you adapting quickly when circumstances change?",
+
+      scaleLabel: "Comfort",
+
+      signal: "adapt_quickly_comfort",
+
+    },
+
+    {
+
+      id: "ent_5",
+
+      type: "impact",
+
+      prompt:
+
+        "How strongly does lack of immediate progress affect your persistence?",
+
+      scaleLabel: "Impact",
+
+      signal: "no_immediate_progress_impact",
+
+    },
+
+    {
+
+      id: "ent_6",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you owning outcomes influenced by many external factors?",
+
+      scaleLabel: "Comfort",
+
+      signal: "external_factors_ownership",
+
+    },
+
+  ],
+
+  Teaching: [
+
+    {
+
+      id: "teach_1",
+
+      type: "scale",
+
+      prompt: "How comfortable are you explaining the same concept in multiple ways?",
+
+      scaleLabel: "Comfort",
+
+      signal: "re_explain_comfort",
+
+    },
+
+    {
+
+      id: "teach_2",
+
+      type: "scale",
+
+      prompt: "When learners progress slowly, how well do you maintain patience?",
+
+      scaleLabel: "Comfort",
+
+      signal: "slow_progress_patience",
+
+    },
+
+    {
+
+      id: "teach_3",
+
+      type: "frequency",
+
+      prompt:
+
+        "How often do you adjust your explanations based on learner response?",
+
+      scaleLabel: "Frequency",
+
+      signal: "adapt_explanation_frequency",
+
+    },
+
+    {
+
+      id: "teach_4",
+
+      type: "impact",
+
+      prompt:
+
+        "How strongly does learner frustration affect your own motivation?",
+
+      scaleLabel: "Impact",
+
+      signal: "learner_frustration_impact",
+
+    },
+
+    {
+
+      id: "teach_5",
+
+      type: "scale",
+
+      prompt:
+
+        "How consistent are you in preparing even when outcomes vary?",
+
+      scaleLabel: "Consistency",
+
+      signal: "prep_consistency",
+
+    },
+
+  ],
+
+  "Product Management": [
+
+    {
+
+      id: "pm_1",
+
+      type: "scale",
+
+      prompt:
+
+        "How comfortable are you making decisions despite conflicting inputs?",
+
+      scaleLabel: "Comfort",
+
+      signal: "conflicting_inputs_comfort",
+
+    },
+
+    {
+
+      id: "pm_2",
+
+      type: "scale",
+
+      prompt:
+
+        "How well do you handle responsibility for outcomes you do not fully control?",
+
+      scaleLabel: "Comfort",
+
+      signal: "partial_control_responsibility",
+
+    },
+
+    {
+
+      id: "pm_3",
+
+      type: "frequency",
+
+      prompt:
+
+        "How often do you switch between strategic and execution thinking?",
+
+      scaleLabel: "Frequency",
+
+      signal: "strategy_execution_switch",
+
+    },
+
+    {
+
+      id: "pm_4",
+
+      type: "impact",
+
+      prompt:
+
+        "How strongly does delayed feedback affect your confidence in decisions?",
+
+      scaleLabel: "Impact",
+
+      signal: "delayed_feedback_confidence_impact",
+
+    },
+
+    {
+
+      id: "pm_5",
+
+      type: "likelihood",
+
+      prompt:
+
+        "How willing are you to revisit decisions when new information appears?",
+
+      scaleLabel: "Willingness",
+
+      signal: "revisit_decisions_willingness",
+
+    },
+
+    {
+
+      id: "pm_6",
+
+      type: "scale",
+
+      prompt: "How comfortable are you working in situations with ongoing ambiguity?",
+
+      scaleLabel: "Comfort",
+
+      signal: "ongoing_ambiguity_comfort",
+
+    },
+
+  ],
+
+};
+
+
+
+/* Stage-2 situational question bank (keep + add properly) */
+
+const STAGE2_SITUATIONAL = {
+
+  Coding: [
+
+    {
+
+      id: "code_s1",
+
+      prompt:
+
+        "You write code that almost works but fails unpredictably. What do you do first?",
+
+      options: [
+
+        "Rewrite the code from scratch",
+
+        "Insert logs and test small sections",
+
+        "Search for similar problems online immediately",
+
+        "Step away and revisit later",
+
+      ],
+
+      signal: "ambiguity_debugging_style",
+
+    },
+
+    {
+
+      id: "code_s2",
+
+      prompt: "When encountering a new concept like recursion:",
+
+      options: [
+
+        "Memorize syntax and examples",
+
+        "Understand the underlying logic before coding",
+
+        "Copy working code and modify it",
+
+        "Skip until required",
+
+      ],
+
+      signal: "abstraction_depth_preference",
+
+    },
+
+    {
+
+      id: "code_s3",
+
+      prompt: "Your code review contains many comments. You mostly feel:",
+
+      options: [
+
+        "Motivated to improve",
+
+        "Overwhelmed but willing",
+
+        "Defensive",
+
+        "Discouraged",
+
+      ],
+
+      signal: "feedback_absorption",
+
+    },
+
+    {
+
+      id: "code_s4",
+
+      prompt: "You’re stuck on a bug for 2 days. You are more likely to:",
+
+      options: [
+
+        "Persist methodically",
+
+        "Jump to a different task",
+
+        "Ask for help early",
+
+        "Question whether coding is for you",
+
+      ],
+
+      signal: "stuck_response",
+
+    },
+
+    {
+
+      id: "code_s5",
+
+      prompt:
+
+        "Coding for: Job deadline vs personal project — which feels harder and why? (Short response)",
+
+      type: "text",
+
+      signal: "context_pressure_reflection",
+
+    },
+
+  ],
+
+  "Data Science": [
+
+    {
+
+      id: "ds_s1",
+
+      prompt: "Dataset has missing values and inconsistencies. You:",
+
+      options: [
+
+        "Clean aggressively before analysis",
+
+        "Explore patterns first",
+
+        "Look for a cleaner dataset",
+
+        "Feel stuck",
+
+      ],
+
+      signal: "messy_data_tolerance_style",
+
+    },
+
+    {
+
+      id: "ds_s2",
+
+      prompt: "Your model performs worse than expected. You assume:",
+
+      options: [
+
+        "Data issue",
+
+        "Feature issue",
+
+        "Algorithm issue",
+
+        "Your understanding is insufficient",
+
+      ],
+
+      signal: "attribution_locus",
+
+    },
+
+    {
+
+      id: "ds_s3",
+
+      prompt: "When encountering formulas:",
+
+      options: [
+
+        "Need intuition first",
+
+        "Prefer derivations",
+
+        "Focus only on usage",
+
+        "Avoid math-heavy parts",
+
+      ],
+
+      signal: "math_abstraction_preference",
+
+    },
+
+    {
+
+      id: "ds_s4",
+
+      prompt: "After multiple failed experiments:",
+
+      options: ["Energized", "Neutral", "Frustrated", "Ready to quit"],
+
+      signal: "iteration_emotional_profile",
+
+    },
+
+    {
+
+      id: "ds_s5",
+
+      prompt:
+
+        "Data science for: business decisions vs curiosity-driven analysis — which aligns better and why?",
+
+      type: "text",
+
+      signal: "purpose_alignment",
+
+    },
+
+  ],
+
+  Marketing: [
+
+    {
+
+      id: "mkt_s1",
+
+      prompt: "Campaign underperforms. You:",
+
+      options: [
+
+        "Analyze metrics",
+
+        "Change messaging",
+
+        "Abandon idea",
+
+        "Doubt skill",
+
+      ],
+
+      signal: "iteration_response_style",
+
+    },
+
+    {
+
+      id: "mkt_s2",
+
+      prompt: "You trust:",
+
+      options: ["Data more", "Intuition more", "Balance", "Neither fully"],
+
+      signal: "decision_bias",
+
+    },
+
+    {
+
+      id: "mkt_s3",
+
+      prompt: "Negative comments appear. You:",
+
+      options: ["Learn from them", "Ignore", "Get defensive", "Panic"],
+
+      signal: "emotional_regulation_public",
+
+    },
+
+    {
+
+      id: "mkt_s4",
+
+      prompt: "Tight deadlines make you:",
+
+      options: ["Focus", "Rush", "Freeze", "Burn out"],
+
+      signal: "pressure_handling",
+
+    },
+
+    {
+
+      id: "mkt_s5",
+
+      prompt:
+
+        "Marketing for: sales vs storytelling — which sustains effort?",
+
+      type: "text",
+
+      signal: "motivation_type",
+
+    },
+
+  ],
+
+  Design: [
+
+    {
+
+      id: "des_s1",
+
+      prompt: "User dislikes your design. You:",
+
+      options: ["Ask why", "Defend rationale", "Redesign quickly", "Feel demotivated"],
+
+      signal: "user_empathy_vs_ego",
+
+    },
+
+    {
+
+      id: "des_s2",
+
+      prompt: "New design task:",
+
+      options: ["Research users", "Sketch immediately", "Look at references", "Wait for clarity"],
+
+      signal: "process_discipline",
+
+    },
+
+    {
+
+      id: "des_s3",
+
+      prompt: "No clear brief provided. You:",
+
+      options: ["Define assumptions", "Ask questions", "Delay", "Feel blocked"],
+
+      signal: "ambiguity_navigation",
+
+    },
+
+    {
+
+      id: "des_s4",
+
+      prompt: "How many iterations before fatigue? (Open response)",
+
+      type: "text",
+
+      signal: "iteration_stamina_reflection",
+
+    },
+
+    {
+
+      id: "des_s5",
+
+      prompt: "Designing for: client vs personal project — which is harder?",
+
+      type: "text",
+
+      signal: "constraint_tolerance_context",
+
+    },
+
+  ],
+
+  "Creative Writing": [
+
+    {
+
+      id: "cw_s1",
+
+      prompt: "Facing a blank page:",
+
+      options: ["Outline first", "Free write", "Delay", "Seek prompts"],
+
+      signal: "initiation_behavior",
+
+    },
+
+    {
+
+      id: "cw_s2",
+
+      prompt: "Reader critiques your tone. You:",
+
+      options: ["Reflect deeply", "Partially accept", "Defend intent", "Feel discouraged"],
+
+      signal: "ego_vs_craft",
+
+    },
+
+    {
+
+      id: "cw_s3",
+
+      prompt: "You prefer:",
+
+      options: ["Multiple drafts", "Minor edits", "Starting fresh", "Avoid revising"],
+
+      signal: "rework_tolerance",
+
+    },
+
+    {
+
+      id: "cw_s4",
+
+      prompt: "Writing for: expression vs publication — which motivates consistency?",
+
+      type: "text",
+
+      signal: "intrinsic_vs_extrinsic",
+
+    },
+
+    {
+
+      id: "cw_s5",
+
+      prompt: "When ideas stop:",
+
+      options: ["Push through", "Change environment", "Consume content", "Stop writing"],
+
+      signal: "block_coping",
+
+    },
+
+  ],
+
+  "Public Speaking": [
+
+    {
+
+      id: "ps_s1",
+
+      prompt: "You feel nervous. You:",
+
+      options: ["Practice more", "Avoid", "Rationalize", "Freeze"],
+
+      signal: "anxiety_coping",
+
+    },
+
+    {
+
+      id: "ps_s2",
+
+      prompt: "You forget a point on stage. You:",
+
+      options: ["Adapt", "Panic", "Restart", "End early"],
+
+      signal: "recovery_ability",
+
+    },
+
+    {
+
+      id: "ps_s3",
+
+      prompt: "Audience critique:",
+
+      options: ["Motivates", "Neutral", "Discourages", "Angers"],
+
+      signal: "feedback_resilience",
+
+    },
+
+    {
+
+      id: "ps_s4",
+
+      prompt: "You prefer:",
+
+      options: ["Rehearsed", "Semi-structured", "Improvised", "Minimal prep"],
+
+      signal: "structure_preference",
+
+    },
+
+    {
+
+      id: "ps_s5",
+
+      prompt: "Speaking for: career vs personal growth — which feels heavier?",
+
+      type: "text",
+
+      signal: "pressure_sensitivity_context",
+
+    },
+
+  ],
+
+  "Video Editing": [
+
+    {
+
+      id: "ve_s1",
+
+      prompt: "Editing takes longer than expected. You:",
+
+      options: ["Break into parts", "Push through", "Delay", "Quit"],
+
+      signal: "task_endurance_style",
+
+    },
+
+    {
+
+      id: "ve_s2",
+
+      prompt: "Multiple revisions requested. You:",
+
+      options: ["Improve calmly", "Get annoyed", "Rush", "Feel defeated"],
+
+      signal: "revision_tolerance",
+
+    },
+
+    {
+
+      id: "ve_s3",
+
+      prompt: "New shortcut:",
+
+      options: ["Learn", "Ignore", "Later", "Avoid"],
+
+      signal: "optimization_mindset",
+
+    },
+
+    {
+
+      id: "ve_s4",
+
+      prompt: "When to stop editing? (Open response)",
+
+      type: "text",
+
+      signal: "completion_judgment",
+
+    },
+
+    {
+
+      id: "ve_s5",
+
+      prompt: "Editing for: YouTube vs client — which is harder?",
+
+      type: "text",
+
+      signal: "constraint_handling",
+
+    },
+
+  ],
+
+  "Music Production": [
+
+    {
+
+      id: "mp_s1",
+
+      prompt: "Track sounds bad. You:",
+
+      options: ["Iterate", "Scrap", "Compare to others", "Feel inadequate"],
+
+      signal: "comparison_sensitivity",
+
+    },
+
+    {
+
+      id: "mp_s2",
+
+      prompt: "Music theory feels:",
+
+      options: ["Helpful", "Limiting", "Overwhelming", "Avoidable"],
+
+      signal: "structure_tolerance",
+
+    },
+
+    {
+
+      id: "mp_s3",
+
+      prompt: "Consistency depends on: mood vs schedule (Short response)",
+
+      type: "text",
+
+      signal: "discipline_vs_emotion",
+
+    },
+
+    {
+
+      id: "mp_s4",
+
+      prompt: "Others dislike your track. You:",
+
+      options: ["Learn", "Defend", "Ignore", "Stop sharing"],
+
+      signal: "vulnerability_tolerance",
+
+    },
+
+    {
+
+      id: "mp_s5",
+
+      prompt: "Producing for: audience vs self — which sustains effort?",
+
+      type: "text",
+
+      signal: "motivation_source",
+
+    },
+
+  ],
+
+  Entrepreneurship: [
+
+    {
+
+      id: "ent_s1",
+
+      prompt: "An idea fails. You:",
+
+      options: ["Pivot", "Persist", "Abandon", "Self-blame"],
+
+      signal: "failure_framing_style",
+
+    },
+
+    {
+
+      id: "ent_s2",
+
+      prompt: "No clear path. You:",
+
+      options: ["Experiment", "Research", "Wait", "Panic"],
+
+      signal: "ambiguity_handling",
+
+    },
+
+    {
+
+      id: "ent_s3",
+
+      prompt: "Risk makes you feel:",
+
+      options: ["Energized", "Cautious", "Anxious", "Paralyzed"],
+
+      signal: "risk_affect",
+
+    },
+
+    {
+
+      id: "ent_s4",
+
+      prompt: "Criticism from others:",
+
+      options: ["Filter", "Internalize", "Ignore", "Get defensive"],
+
+      signal: "ego_control",
+
+    },
+
+    {
+
+      id: "ent_s5",
+
+      prompt: "Entrepreneurship for: freedom vs wealth — which sustains effort?",
+
+      type: "text",
+
+      signal: "intrinsic_driver",
+
+    },
+
+  ],
+
+  Teaching: [
+
+    {
+
+      id: "teach_s1",
+
+      prompt: "Student doesn’t understand. You:",
+
+      options: ["Rephrase", "Repeat", "Get frustrated", "Move on"],
+
+      signal: "patience_style",
+
+    },
+
+    {
+
+      id: "teach_s2",
+
+      prompt: "Student feedback is poor. You:",
+
+      options: ["Reflect", "Justify", "Ignore", "Feel discouraged"],
+
+      signal: "adaptability",
+
+    },
+
+    {
+
+      id: "teach_s3",
+
+      prompt: "You prefer:",
+
+      options: ["Structured plans", "Flexible flow", "Minimal prep", "Overprepare"],
+
+      signal: "structure_comfort",
+
+    },
+
+    {
+
+      id: "teach_s4",
+
+      prompt: "Teaching drains you because? (Open response)",
+
+      type: "text",
+
+      signal: "emotional_cost_awareness",
+
+    },
+
+    {
+
+      id: "teach_s5",
+
+      prompt: "Teaching for: income vs impact — which motivates?",
+
+      type: "text",
+
+      signal: "value_alignment",
+
+    },
+
+  ],
+
+  "Product Management": [
+
+    {
+
+      id: "pm_s1",
+
+      prompt: "Conflicting stakeholders. You:",
+
+      options: ["Prioritize data", "Balance interests", "Avoid conflict", "Get stressed"],
+
+      signal: "conflict_management",
+
+    },
+
+    {
+
+      id: "pm_s2",
+
+      prompt: "Unclear requirements. You:",
+
+      options: ["Define assumptions", "Ask questions", "Delay", "Feel blocked"],
+
+      signal: "ambiguity_tolerance",
+
+    },
+
+    {
+
+      id: "pm_s3",
+
+      prompt: "Wrong decision made. You:",
+
+      options: ["Own it", "Justify", "Deflect", "Withdraw"],
+
+      signal: "responsibility_ownership",
+
+    },
+
+    {
+
+      id: "pm_s4",
+
+      prompt: "Product iteration feels:",
+
+      options: ["Natural", "Draining", "Frustrating", "Avoidable"],
+
+      signal: "iteration_stamina",
+
+    },
+
+    {
+
+      id: "pm_s5",
+
+      prompt: "PM role for: authority vs problem-solving — which motivates?",
+
+      type: "text",
+
+      signal: "power_vs_craft",
+
+    },
+
+  ],
+
+};
+
+
+
+/* ===========================
+
+   Contradiction detection logic
+
+   - Flags conflicting or unrealistic behavioral inputs
+
+   - No moralizing; just “this seems internally inconsistent”
+
+   =========================== */
+
+function contradictionChecks(skill, stage1Answers = {}, stage2Answers = {}) {
+
+  const flags = [];
+
+
+
+  // Helpers (stage1 scale: 1-5)
+
+  const s = (signalKey) => stage1Answers?.[signalKey]?.value ?? null;
+
+
+
+  if (skill === "Coding") {
+
+    const abstraction = s("abstraction_comfort");
+
+    const delayed = s("delayed_feedback_impact");
+
+    const endurance = s("debugging_endurance_time");
+
+    if (abstraction != null && abstraction >= 4 && endurance != null && endurance <= 2) {
+
+      flags.push(
+
+        "You indicated high comfort with abstract concepts, but low tolerance for prolonged unclear debugging. If both are accurate, consider clarifying whether your comfort changes under time pressure."
+
+      );
+
+    }
+
+    if (delayed != null && delayed >= 4 && stage2Answers?.["feedback_absorption"] === "Motivated to improve") {
+
+      flags.push(
+
+        "You noted delayed feedback strongly affects motivation, while also describing feedback as motivating. This can be true in different contexts; you may want to note when feedback feels helpful vs draining."
+
+      );
+
+    }
+
+  }
+
+
+
+  if (skill === "Data Science") {
+
+    const noCorrect = s("no_single_answer_comfort");
+
+    const prob = s("probabilistic_decision_comfort");
+
+    if (noCorrect != null && noCorrect <= 2 && prob != null && prob >= 4) {
+
+      flags.push(
+
+        "You reported low comfort with problems lacking a single correct answer, but high comfort with probabilistic decisions. If both are true, it may depend on how clearly the uncertainty is framed."
+
+      );
+
+    }
+
+  }
+
+
+
+  // Generic: extreme “very low” engagement + “very high” detail revisits
+
+  if (skill === "Video Editing") {
+
+    const engage = s("slow_progress_engagement");
+
+    const detail = s("detail_revisit_frequency");
+
+    if (engage != null && engage <= 2 && detail != null && detail >= 4) {
+
+      flags.push(
+
+        "You described slow-progress engagement as low, but frequent detail revisits as high. This can be true if revisiting details feels satisfying even when the overall progress feels slow."
+
+      );
+
+    }
+
+  }
+
+
+
+  return flags;
+
+}
+
+
+
+/* ===========================
+
+   Risk-weight mapping tables (lightweight, explainable)
+
+   NOTE: These produce “risk-relevant signals”, not deterministic scores.
+
+   =========================== */
+
+function toVectorStage1(stage1Answers) {
+
+  // Normalize 1-5 -> 0-1
+
+  const vec = {};
+
+  Object.entries(stage1Answers || {}).forEach(([k, v]) => {
+
+    const raw = v?.value;
+
+    if (typeof raw === "number") vec[k] = clamp((raw - 1) / 4, 0, 1);
+
+  });
+
+  return vec;
+
+}
+
+
+
+function toVectorStage2(stage2Answers) {
+
+  // Categorical responses mapped to stable tokens
+
+  const vec = {};
+
+  Object.entries(stage2Answers || {}).forEach(([signal, value]) => {
+
+    vec[signal] = value ?? null;
+
+  });
+
+  return vec;
+
+}
+
+
+
+/* Produce descriptive insights (no “pass/fail”) */
+
+function buildInsights(skill, context, stage1Answers, stage2Answers, stage3Signals) {
+
+  const v1 = toVectorStage1(stage1Answers);
+
+  const flags = contradictionChecks(skill, stage1Answers, stage2Answers);
+
+
+
+  const observations = [];
+
+  const tips = [];
+
+  const resources = [];
+
+
+
+  // Generic scaffolding: describe preference bands (low/mid/high)
+
+  function describeBand(key, labelLow, labelMid, labelHigh) {
+
+    const x = v1[key];
+
+    if (x == null) return;
+
+    if (x <= 0.33) observations.push(labelLow);
+
+    else if (x <= 0.66) observations.push(labelMid);
+
+    else observations.push(labelHigh);
+
+  }
+
+
+
+  if (skill === "Coding") {
+
+    describeBand(
+
+      "abstraction_comfort",
+
+      "You indicated you prefer seeing practical anchors early when concepts feel abstract.",
+
+      "You indicated you can work with abstraction when there are occasional concrete examples.",
+
+      "You indicated you’re generally comfortable learning abstract concepts before immediate results."
+
+    );
+
+    describeBand(
+
+      "delayed_feedback_impact",
+
+      "Delayed feedback seems to have a lighter effect on your momentum.",
+
+      "Delayed feedback affects momentum sometimes, depending on context.",
+
+      "Delayed feedback has a noticeable effect on momentum; shorter feedback loops may help."
+
+    );
+
+    describeBand(
+
+      "self_directed_docs",
+
+      "You tend to prefer guided steps over documentation-first exploration.",
+
+      "You use documentation when needed, alongside other supports.",
+
+      "You’re comfortable using documentation and written references without step-by-step guidance."
+
+    );
+
+
+
+    tips.push(
+
+      "If motivation dips when feedback is delayed, try tighter loops: smaller tasks, quicker tests, or earlier checkpoints."
+
+    );
+
+    tips.push(
+
+      "When debugging is unclear, a short structured routine can help: isolate, log, simplify, then re-test."
+
+    );
+
+    resources.push("Practice approach: write a tiny failing test, then iterate until it passes.");
+
+    resources.push("Reference habit: keep a personal “debug notes” log with patterns you notice.");
+
+  }
+
+
+
+  // Provide context modulation (job vs hobby/fun)
+
+  const contextNote =
+
+    context === "Job"
+
+      ? "Context sensitivity: job settings often add deadlines and external expectations; you can use smaller checkpoints to keep feedback frequent."
+
+      : "Context sensitivity: hobby/fun settings often allow exploration pacing; you can lean into curiosity-driven iterations and playful experimentation.";
+
+
+
+  // Stage-3 (microtasks): descriptive signal integration
+
+  if (stage3Signals?.notes) {
+
+    observations.push(`Microtask notes: ${stage3Signals.notes}`);
+
+  }
+
+
+
+  return {
+
+    skill,
+
+    context,
+
+    observations,
+
+    tips,
+
+    resources,
+
+    consistencyFlags: flags,
+
+    patternVectors: {
+
+      stage1: v1,
+
+      stage2: toVectorStage2(stage2Answers),
+
+      stage3: stage3Signals ?? {},
+
+    },
+
+    contextNote,
+
+  };
+
+}
+
+
+
+/* ===========================
+
+   Local persistence for progress tracking
+
+   =========================== */
+
+const STORAGE_KEY = "scre_progress_v1";
+
+
+
+function loadProgress() {
+
+  const raw = safeJsonParse(localStorage.getItem(STORAGE_KEY) || "null", null);
+
+  return (
+
+    raw || {
+
+      sessions: [], // {id, startedAt, endedAt, skill, context, stageTimesMs, completedStages}
+
+      aggregates: {
+
+        bySkill: {}, // skill -> {sessions, totalTimeMs, completionCounts}
+
+      },
+
+    }
+
+  );
+
+}
+
+
+
+function saveProgress(p) {
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
+
+}
+
+
+
+/* ===========================
+
+   UI primitives
+
+   =========================== */
+
+function Row({ children, style }) {
+
+  return (
+
+    <div style={{ display: "flex", gap: 12, alignItems: "center", ...style }}>
+
+      {children}
+
+    </div>
+
+  );
+
+}
+
+
+
+function Spacer({ h = 12 }) {
+
+  return <div style={{ height: h }} />;
+
+}
+
+
+
+function SectionTitle({ title, subtitle }) {
+
+  return (
+
+    <div>
+
+      <div style={{ fontSize: 18, fontWeight: 800 }}>{title}</div>
+
+      {subtitle ? <div style={{ ...styles.small, marginTop: 4 }}>{subtitle}</div> : null}
+
+    </div>
+
+  );
+
+}
+
+
+
+function Likert({ value, onChange, labels = ["1", "2", "3", "4", "5"] }) {
+
+  return (
+
+    <Row style={{ gap: 10, flexWrap: "wrap" }}>
+
+      {labels.map((lab, idx) => {
+
+        const v = idx + 1;
+
+        const active = value === v;
+
+        return (
+
+          <button
+
+            key={lab}
+
+            type="button"
+
+            onClick={() => onChange(v)}
+
+            style={{
+
+              ...styles.button(active ? "primary" : "secondary"),
+
+              padding: "8px 10px",
+
+              borderRadius: 999,
+
+            }}
+
+          >
+
+            {lab}
+
+          </button>
+
+        );
+
+      })}
+
+    </Row>
+
+  );
+
+}
+
+
+
+/* ===========================
+
+   MicroTask module (scre/MicroTask)
+
+   - Fix ArrowRight usage: we use local ArrowRight defined above
+
+   - Tracks exploration notes (not “score”)
+
+   =========================== */
+
+export function MicroTask({ skill, onDone }) {
+
+  const [notes, setNotes] = React.useState("");
+
+
+
+  React.useEffect(() => {
+
+    Analytics.track("microtask_view", { skill });
+
+  }, [skill]);
+
+
+
+  return (
+
+    <div style={styles.card}>
+
+      <SectionTitle
+
+        title="Stage 3: Microtask Reflection"
+
+        subtitle="This stage captures how you approach small tasks and how you describe your process. It does not label you and is not pass/fail."
+
+      />
+
+      <Spacer />
+
+      <div style={styles.label}>Short note (optional)</div>
+
+      <textarea
+
+        value={notes}
+
+        onChange={(e) => setNotes(e.target.value)}
+
+        rows={4}
+
+        style={{ ...styles.input, resize: "vertical" }}
+
+        placeholder="Example: what you tried first, what you noticed, what you would try next."
+
+      />
+
+      <Spacer />
+
+      <button
+
+        type="button"
+
+        style={styles.button("primary")}
+
+        onClick={() => {
+
+          Analytics.track("microtask_done", { skill, hasNotes: Boolean(notes?.trim()) });
+
+          onDone({ notes: notes?.trim() || null });
+
+        }}
+
+      >
+
+        Continue <ArrowRight />
+
+      </button>
+
+    </div>
+
+  );
+
+}
+
+
+
+/* ===========================
+
+   Assessment Flow
+
+   =========================== */
+
+function Stage1({ skill, answers, setAnswers, context }) {
+
+  const qs = STAGE1_QUESTIONS[skill] || [];
+
+  return (
+
+    <div style={styles.card}>
+
+      <SectionTitle
+
+        title="Stage 1: Preparation & Exploration Signals"
+
+        subtitle="No intelligence labels. No pass/fail. This captures approach preferences that can shape learning experience."
+
+      />
+
+      <Spacer />
+
+      <div style={styles.pill}>Skill: {skill}</div>{" "}
+
+      <div style={styles.pill}>Context: {context}</div>
+
+      <Spacer h={16} />
+
+      {qs.map((q) => {
+
+        const current = answers?.[q.signal]?.value ?? null;
+
+        return (
+
+          <div key={q.id} style={{ padding: "12px 0" }}>
+
+            <div style={{ fontWeight: 700 }}>{q.prompt}</div>
+
+            <div style={{ ...styles.small, marginTop: 6, marginBottom: 8 }}>
+
+              {q.scaleLabel} • Choose 1–5
+
+            </div>
+
+            <Likert
+
+              value={current}
+
+              onChange={(v) =>
+
+                setAnswers((prev) => ({
+
+                  ...prev,
+
+                  [q.signal]: { value: v, updatedAt: nowMs() },
+
+                }))
+
+              }
+
+              labels={["1", "2", "3", "4", "5"]}
+
+            />
+
+            <hr style={{ ...styles.hr, marginTop: 12 }} />
+
+          </div>
+
+        );
+
+      })}
+
+    </div>
+
+  );
+
+}
+
+
+
+function Stage2({ skill, answers, setAnswers, context }) {
+
+  const qs = STAGE2_SITUATIONAL[skill] || [];
+
+  return (
+
+    <div style={styles.card}>
+
+      <SectionTitle
+
+        title="Stage 2: Situational Questions"
+
+        subtitle="These explore cognitive style and behavioral alignment with the skill. They generate risk-relevant signals, not scores."
+
+      />
+
+      <Spacer />
+
+      <div style={styles.pill}>Skill: {skill}</div>{" "}
+
+      <div style={styles.pill}>Context: {context}</div>
+
+      <Spacer h={16} />
+
+
+
+      {qs.map((q) => {
+
+        const current = answers?.[q.signal] ?? "";
+
+        const isText = q.type === "text";
+
+        return (
+
+          <div key={q.id} style={{ padding: "12px 0" }}>
+
+            <div style={{ fontWeight: 700 }}>{q.prompt}</div>
+
+            <Spacer h={8} />
+
+            {isText ? (
+
+              <input
+
+                value={current}
+
+                onChange={(e) => setAnswers((p) => ({ ...p, [q.signal]: e.target.value }))}
+
+                style={styles.input}
+
+                placeholder="Short response"
+
+              />
+
+            ) : (
+
+              <div style={{ display: "grid", gap: 8 }}>
+
+                {q.options.map((opt) => {
+
+                  const active = current === opt;
+
+                  return (
+
+                    <button
+
+                      type="button"
+
+                      key={opt}
+
+                      style={styles.button(active ? "primary" : "secondary")}
+
+                      onClick={() => setAnswers((p) => ({ ...p, [q.signal]: opt }))}
+
+                    >
+
+                      {opt}
+
+                    </button>
+
+                  );
+
+                })}
+
+              </div>
+
+            )}
+
+            <hr style={{ ...styles.hr, marginTop: 12 }} />
+
+          </div>
+
+        );
+
+      })}
+
+    </div>
+
+  );
+
+}
+
+
+
+function ReportView({ report, onStartNew, onExport }) {
+
+  return (
+
+    <div style={styles.card}>
+
+      <SectionTitle
+
+        title="Assessment Report"
+
+        subtitle="This report summarizes preparation/exploration signals and patterns. It does not assign labels and is not pass/fail."
+
+      />
+
+      <Spacer />
+
+      <div style={styles.pill}>Skill: {report.skill}</div>{" "}
+
+      <div style={styles.pill}>Context: {report.context}</div>
+
+      <Spacer h={16} />
+
+
+
+      <div style={{ fontWeight: 800, marginBottom: 8 }}>Descriptive insights</div>
+
+      <ul style={{ marginTop: 0 }}>
+
+        {report.observations.map((t, i) => (
+
+          <li key={i} style={{ marginBottom: 6 }}>
+
+            {t}
+
+          </li>
+
+        ))}
+
+      </ul>
+
+
+
+      <div style={{ fontWeight: 800, marginBottom: 8 }}>Optional next-step tips</div>
+
+      <ul style={{ marginTop: 0 }}>
+
+        {report.tips.map((t, i) => (
+
+          <li key={i} style={{ marginBottom: 6 }}>
+
+            {t}
+
+          </li>
+
+        ))}
+
+      </ul>
+
+
+
+      <div style={{ fontWeight: 800, marginBottom: 8 }}>Resources (suggestions)</div>
+
+      <ul style={{ marginTop: 0 }}>
+
+        {report.resources.map((t, i) => (
+
+          <li key={i} style={{ marginBottom: 6 }}>
+
+            {t}
+
+          </li>
+
+        ))}
+
+      </ul>
+
+
+
+      <div style={{ fontWeight: 800, marginBottom: 8 }}>Context sensitivity</div>
+
+      <div style={{ ...styles.small, marginBottom: 12 }}>{report.contextNote}</div>
+
+
+
+      {report.consistencyFlags?.length ? (
+
+        <>
+
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>
+
+            Consistency & contradiction checks
+
+          </div>
+
+          <ul style={{ marginTop: 0 }}>
+
+            {report.consistencyFlags.map((f, i) => (
+
+              <li key={i} style={{ marginBottom: 6 }}>
+
+                {f}
+
+              </li>
+
+            ))}
+
+          </ul>
+
+        </>
+
+      ) : (
+
+        <div style={{ ...styles.small, marginBottom: 12 }}>
+
+          Consistency checks: no notable contradictions detected from the current responses.
+
+        </div>
+
+      )}
+
+
+
+      <details style={{ marginTop: 10 }}>
+
+        <summary style={{ cursor: "pointer", fontWeight: 800 }}>
+
+          Pattern vectors (for engine use)
+
+        </summary>
+
+        <pre style={{ whiteSpace: "pre-wrap" }}>
+
+          {JSON.stringify(report.patternVectors, null, 2)}
+
+        </pre>
+
+      </details>
+
+
+
+      <Spacer />
+
+      <Row style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
+
+        {/* FIX: Start New Assessment button theme color (not white) */}
+
+        <button type="button" style={styles.button("primary")} onClick={onStartNew}>
+
+          Start New Assessment <ArrowRight />
+
+        </button>
+
+
+
+        {/* FIX: Export Report button theme color + working export */}
+
+        <button type="button" style={styles.button("secondary")} onClick={onExport}>
+
+          Export Report
+
+        </button>
+
+      </Row>
+
+    </div>
+
+  );
+
+}
+
+
+
+/* ===========================
+
+   Progress Page
+
+   - completion rates
+
+   - time spent
+
+   - descriptive trends (no evaluative framing)
+
+   =========================== */
+
+function ProgressPage({ progress }) {
+
+  const sessions = progress.sessions || [];
+
+  const bySkill = progress.aggregates?.bySkill || {};
+
+
+
+  return (
+
+    <div style={styles.card}>
+
+      <SectionTitle
+
+        title="Progress"
+
+        subtitle="Tracks completion and time spent across assessments. This is descriptive history for planning and exploration."
+
+      />
+
+      <Spacer />
+
+      <div style={{ display: "grid", gap: 10 }}>
+
+        {SKILLS.map((skill) => {
+
+          const agg = bySkill[skill] || {
+
+            sessions: 0,
+
+            totalTimeMs: 0,
+
+            completionCounts: { stage1: 0, stage2: 0, stage3: 0, report: 0 },
+
+          };
+
+          const minutes = Math.round((agg.totalTimeMs || 0) / 60000);
+
+          return (
+
+            <div key={skill} style={{ ...styles.card, padding: 12 }}>
+
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+
+                <div style={{ fontWeight: 800 }}>{skill}</div>
+
+                <div style={styles.pill}>{agg.sessions} sessions</div>
+
+              </div>
+
+              <Spacer h={8} />
+
+              <div style={styles.small}>Time spent: ~{minutes} min</div>
+
+              <div style={styles.small}>
+
+                Completed stages (count): Stage 1: {agg.completionCounts.stage1 || 0} •
+
+                Stage 2: {agg.completionCounts.stage2 || 0} • Stage 3:{" "}
+
+                {agg.completionCounts.stage3 || 0} • Report:{" "}
+
+                {agg.completionCounts.report || 0}
+
+              </div>
+
+            </div>
+
+          );
+
+        })}
+
+      </div>
+
+
+
+      <Spacer h={18} />
+
+      <div style={{ fontWeight: 800, marginBottom: 8 }}>Recent sessions</div>
+
+      <div style={{ display: "grid", gap: 10 }}>
+
+        {sessions
+
+          .slice()
+
+          .reverse()
+
+          .slice(0, 8)
+
+          .map((s) => {
+
+            const totalMs =
+
+              (s.stageTimesMs?.stage1 || 0) +
+
+              (s.stageTimesMs?.stage2 || 0) +
+
+              (s.stageTimesMs?.stage3 || 0);
+
+            const mins = Math.max(1, Math.round(totalMs / 60000));
+
+            return (
+
+              <div key={s.id} style={{ ...styles.card, padding: 12 }}>
+
+                <div style={{ fontWeight: 800 }}>
+
+                  {s.skill} • {s.context}
+
+                </div>
+
+                <div style={styles.small}>
+
+                  Time spent: ~{mins} min • Stages completed:{" "}
+
+                  {Object.keys(s.completedStages || {})
+
+                    .filter((k) => s.completedStages[k])
+
+                    .join(", ") || "—"}
+
+                </div>
+
+              </div>
+
+            );
+
+          })}
+
+      </div>
+
+    </div>
+
+  );
+
+}
+
+
+
+/* ===========================
+
+   Main App (single-file routing)
+
+   =========================== */
+
+export default function App() {
+
+  const [route, setRoute] = React.useState("assessment"); // "assessment" | "progress"
+
+  const [skill, setSkill] = React.useState("Coding");
+
+  const [context, setContext] = React.useState("Job");
+
+
+
+  const [stage, setStage] = React.useState(1); // 1,2,3,4(report)
+
+  const [stage1Answers, setStage1Answers] = React.useState({});
+
+  const [stage2Answers, setStage2Answers] = React.useState({});
+
+  const [stage3Signals, setStage3Signals] = React.useState({});
+
+
+
+  const [report, setReport] = React.useState(null);
+
+
+
+  // Progress tracking session
+
+  const [sessionId, setSessionId] = React.useState(null);
+
+  const [stageStartAt, setStageStartAt] = React.useState(nowMs());
+
+  const [progress, setProgress] = React.useState(() => loadProgress());
+
+
+
+  function beginSession() {
+
+    const id = `sess_${nowMs()}_${Math.random().toString(16).slice(2)}`;
+
+    setSessionId(id);
+
+    setStageStartAt(nowMs());
+
+    Analytics.track("session_start", { id, skill, context });
+
+    return id;
+
+  }
+
+
+
+  function endStage(stageKey) {
+
+    const endAt = nowMs();
+
+    const elapsed = Math.max(0, endAt - stageStartAt);
+
+    setStageStartAt(endAt);
+
+
+
+    setProgress((prev) => {
+
+      const next = structuredClone(prev);
+
+      const sess =
+
+        next.sessions.find((x) => x.id === sessionId) ||
+
+        (() => {
+
+          const s = {
+
+            id: sessionId,
+
+            startedAt: nowMs(),
+
+            endedAt: null,
+
+            skill,
+
+            context,
+
+            stageTimesMs: { stage1: 0, stage2: 0, stage3: 0 },
+
+            completedStages: { stage1: false, stage2: false, stage3: false, report: false },
+
+          };
+
+          next.sessions.push(s);
+
+          return s;
+
+        })();
+
+
+
+      sess.stageTimesMs[stageKey] = (sess.stageTimesMs[stageKey] || 0) + elapsed;
+
+      sess.completedStages[stageKey] = true;
+
+
+
+      // update aggregates
+
+      next.aggregates.bySkill = next.aggregates.bySkill || {};
+
+      const agg =
+
+        next.aggregates.bySkill[skill] ||
+
+        (next.aggregates.bySkill[skill] = {
+
+          sessions: 0,
+
+          totalTimeMs: 0,
+
+          completionCounts: { stage1: 0, stage2: 0, stage3: 0, report: 0 },
+
+        });
+
+
+
+      // ensure sessions count only once per session
+
+      if (!sess._countedForAgg) {
+
+        agg.sessions += 1;
+
+        sess._countedForAgg = true;
+
+      }
+
+
+
+      agg.totalTimeMs += elapsed;
+
+      agg.completionCounts[stageKey] = (agg.completionCounts[stageKey] || 0) + 1;
+
+
+
+      saveProgress(next);
+
+      return next;
+
+    });
+
+  }
+
+
+
+  React.useEffect(() => {
+
+    if (!sessionId && route === "assessment") beginSession();
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+  }, [route]);
+
+
+
+  function resetAssessment() {
+
+    Analytics.track("assessment_reset", { skill, context });
+
+    setStage(1);
+
+    setStage1Answers({});
+
+    setStage2Answers({});
+
+    setStage3Signals({});
+
+    setReport(null);
+
+    const id = beginSession();
+
+    setSessionId(id);
+
+  }
+
+
+
+  function finalizeReport() {
+
+    const rep = buildInsights(skill, context, stage1Answers, stage2Answers, stage3Signals);
+
+    setReport(rep);
+
+
+
+    // mark report stage in progress
+
+    setProgress((prev) => {
+
+      const next = structuredClone(prev);
+
+      const sess = next.sessions.find((x) => x.id === sessionId);
+
+      if (sess) {
+
+        sess.completedStages.report = true;
+
+        next.aggregates.bySkill = next.aggregates.bySkill || {};
+
+        const agg = next.aggregates.bySkill[skill];
+
+        if (agg) agg.completionCounts.report = (agg.completionCounts.report || 0) + 1;
+
+        sess.endedAt = nowMs();
+
+      }
+
+      saveProgress(next);
+
+      return next;
+
+    });
+
+
+
+    Analytics.track("report_ready", { skill, context });
+
+  }
+
+
+
+  function exportReport() {
+
+    if (!report) return;
+
+    const payload = {
+
+      version: "scre_report_v1",
+
+      createdAt: new Date().toISOString(),
+
+      report,
+
+    };
+
+    downloadTextFile(
+
+      `SCRE_Report_${report.skill.replace(/\s+/g, "_")}_${Date.now()}.json`,
+
+      JSON.stringify(payload, null, 2),
+
+      "application/json"
+
+    );
+
+    Analytics.track("report_export", { skill: report.skill, context: report.context });
+
+  }
+
+
+
+  const canContinueStage1 = () => {
+
+    const qs = STAGE1_QUESTIONS[skill] || [];
+
+    return qs.every((q) => typeof stage1Answers?.[q.signal]?.value === "number");
+
+  };
+
+
+
+  const canContinueStage2 = () => {
+
+    const qs = STAGE2_SITUATIONAL[skill] || [];
+
+    return qs.every((q) => {
+
+      const v = stage2Answers?.[q.signal];
+
+      if (q.type === "text") return typeof v === "string" && v.trim().length > 0;
+
+      return typeof v === "string" && v.length > 0;
+
+    });
+
+  };
+
+
+
+  return (
+
+    <div style={styles.app}>
+
+      <div style={styles.nav}>
+
+        <div style={{ fontWeight: 900, letterSpacing: 0.3 }}>SCRE</div>
+
+        <button
+
+          type="button"
+
+          style={styles.navBtn(route === "assessment")}
+
+          onClick={() => setRoute("assessment")}
+
+        >
+
+          Assessment
+
+        </button>
+
+        <button
+
+          type="button"
+
+          style={styles.navBtn(route === "progress")}
+
+          onClick={() => setRoute("progress")}
+
+        >
+
+          Progress
+
+        </button>
+
+        <div style={{ flex: 1 }} />
+
+        <div style={styles.pill}>
+
+          Analytics: {Analytics.enabled ? "On" : "Off"}
+
+        </div>
+
+      </div>
+
+
+
+      <div style={styles.container}>
+
+        {route === "progress" ? (
+
+          <ProgressPage progress={progress} />
+
+        ) : (
+
+          <div style={{ display: "grid", gap: 12 }}>
+
+            <div style={styles.card}>
+
+              <SectionTitle
+
+                title="Setup"
+
+                subtitle="Choose a skill and context. The assessment focuses on approach and exploration signals."
+
+              />
+
+              <Spacer />
+
+              <Row style={{ flexWrap: "wrap" }}>
+
+                <div style={{ minWidth: 240, flex: 1 }}>
+
+                  <div style={styles.label}>Skill</div>
+
+                  <select
+
+                    value={skill}
+
+                    onChange={(e) => {
+
+                      setSkill(e.target.value);
+
+                      resetAssessment();
+
+                    }}
+
+                    style={styles.input}
+
+                  >
+
+                    {SKILLS.map((s) => (
+
+                      <option value={s} key={s}>
+
+                        {s}
+
+                      </option>
+
+                    ))}
+
+                  </select>
+
+                </div>
+
+
+
+                <div style={{ minWidth: 240, flex: 1 }}>
+
+                  <div style={styles.label}>Context</div>
+
+                  <select
+
+                    value={context}
+
+                    onChange={(e) => {
+
+                      setContext(e.target.value);
+
+                      resetAssessment();
+
+                    }}
+
+                    style={styles.input}
+
+                  >
+
+                    {CONTEXTS.map((c) => (
+
+                      <option value={c} key={c}>
+
+                        {c}
+
+                      </option>
+
+                    ))}
+
+                  </select>
+
+                </div>
+
+              </Row>
+
+              <Spacer />
+
+              <div style={styles.small}>
+
+                Stage flow: Stage 1 (signals) → Stage 2 (situations) → Stage 3
+
+                (microtask reflection) → Report
+
+              </div>
+
+            </div>
+
+
+
+            {stage === 1 ? (
+
+              <>
+
+                <Stage1
+
+                  skill={skill}
+
+                  answers={stage1Answers}
+
+                  setAnswers={setStage1Answers}
+
+                  context={context}
+
+                />
+
+                <Row style={{ justifyContent: "flex-end" }}>
+
+                  <button
+
+                    type="button"
+
+                    style={styles.button("primary")}
+
+                    onClick={() => {
+
+                      if (!canContinueStage1()) return;
+
+                      endStage("stage1");
+
+                      setStage(2);
+
+                      Analytics.track("stage1_complete", { skill, context });
+
+                    }}
+
+                  >
+
+                    Continue <ArrowRight />
+
+                  </button>
+
+                </Row>
+
+              </>
+
+            ) : null}
+
+
+
+            {stage === 2 ? (
+
+              <>
+
+                <Stage2
+
+                  skill={skill}
+
+                  answers={stage2Answers}
+
+                  setAnswers={setStage2Answers}
+
+                  context={context}
+
+                />
+
+                <Row style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
+
+                  <button
+
+                    type="button"
+
+                    style={styles.button("secondary")}
+
+                    onClick={() => setStage(1)}
+
+                  >
+
+                    Back
+
+                  </button>
+
+                  <button
+
+                    type="button"
+
+                    style={styles.button("primary")}
+
+                    onClick={() => {
+
+                      if (!canContinueStage2()) return;
+
+                      endStage("stage2");
+
+                      setStage(3);
+
+                      Analytics.track("stage2_complete", { skill, context });
+
+                    }}
+
+                  >
+
+                    Continue <ArrowRight />
+
+                  </button>
+
+                </Row>
+
+              </>
+
+            ) : null}
+
+
+
+            {stage === 3 ? (
+
+              <>
+
+                <MicroTask
+
+                  skill={skill}
+
+                  onDone={(signals) => {
+
+                    setStage3Signals(signals || {});
+
+                    endStage("stage3");
+
+                    setStage(4);
+
+                    finalizeReport();
+
+                  }}
+
+                />
+
+              </>
+
+            ) : null}
+
+
+
+            {stage === 4 && report ? (
+
+              <ReportView
+
+                report={report}
+
+                onStartNew={() => resetAssessment()}
+
+                onExport={() => exportReport()}
+
+              />
+
+            ) : null}
+
+          </div>
+
+        )}
+
+      </div>
+
+    </div>
+
+  );
+
+}
+
+
+
+/* ===========================
+
+   IMPORTANT INTEGRATION NOTES
+
+   ===========================
+
+   1) ArrowRight is defined locally above; remove any old imports like:
+
+      import { ArrowRight } from "lucide-react";
+
+      If you still prefer lucide, keep lucide import but ensure it's imported everywhere.
+
+      This implementation avoids runtime “ArrowRight is not defined”.
+
+
+
+   2) Replace your existing Stage-1 question bank with STAGE1_QUESTIONS above.
+
+      Stage-2 situational bank is STAGE2_SITUATIONAL above (kept + added properly).
+
+
+
+   3) Export Report: downloads JSON (reliable across browsers). If you need PDF later,
+
+      you can render HTML and print-to-PDF, but JSON export is the most stable baseline.
+
+
+
+   4) Button visibility fix: “Start New Assessment” uses primary accent, not white.
+
+      “Export Report” uses secondary themed styling.
+
+
+
+   5) Progress page: stored in localStorage. If you need server persistence later,
+
+      keep schema compatibility (nullable fields, additive changes).
+
+*/
