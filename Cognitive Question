@@ -1,7 +1,6 @@
 import React, { useMemo, useRef, useState } from "react";
 
 
-
 /* -------------------------------------------------------
 
  * Icon: ArrowRight (Define it wherever used)
