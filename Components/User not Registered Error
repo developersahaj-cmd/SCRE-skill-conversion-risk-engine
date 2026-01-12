@@ -1,7 +1,5 @@
 import React from 'react';
 
-
-
 // NOTE:
 
 // Minimal, backward-compatible correction of the original component file.
