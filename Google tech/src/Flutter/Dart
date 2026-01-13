@@ -1,0 +1,9 @@
+import 'package:google_generative_ai/google_generative_ai.dart';
+
+Future<String> getRiskData(String skill, String behavior) async {
+  final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: 'AIzaSyBc84yb5XGW3H4-pDFdOWDNysrQmNkfpBw);
+  final content = [Content.text("Analyze conversion risk for $skill given $behavior")];
+  final response = await model.generateContent(content);
+  return response.text ?? "No data";
+}
+
