@@ -1,0 +1,7 @@
+/SCRE-root
+  ├── /src (Existing JSX code)
+  ├── /flutter_scre_ui (New Flutter module)
+  ├── .env
+  ├── GOOGLE_TECH.md
+  └── README.md
+
