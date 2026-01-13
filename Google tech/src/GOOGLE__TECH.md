@@ -18,4 +18,9 @@ This project leverages the Google ecosystem to provide a scalable, AI-driven ris
 - **Role:** Orchestration and Scaling Layer.
 - **Implementation:** Hosts the SCRE Web Frontend and the Risk Engine logic as containerized microservices.
 - **Benefit:** Ensures high availability and automatic scaling during high-traffic hackathon demos or user growth. [span_6](start_span)It manages the "Input Handling Layer" and "Result Output Layer" efficiently[span_6](end_span).
+- ### 5. Flutter (Cross-Platform UI)
+- **Role:** High-performance Mobile and Web UI Layer.
+- **Implementation:** Built a Flutter module to provide a consistent "Risk Dashboard" experience on Android and iOS.
+- **Benefit:** Utilizes Dart's Ahead-of-Time (AOT) compilation for smooth 60 FPS animations in the "Explainability Module," making complex risk data easy to visualize.
+
 
