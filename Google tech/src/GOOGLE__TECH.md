@@ -14,4 +14,8 @@ This project leverages the Google ecosystem to provide a scalable, AI-driven ris
 
 ### 3. Google Cloud (Vertex AI Readiness)
 - While using Gemini API for the MVP, the system is designed to scale into **Google Cloud Vertex AI** for more advanced "Risk Band Assignment" and custom model tuning.
+### 4. Google Kubernetes Engine (GKE)
+- **Role:** Orchestration and Scaling Layer.
+- **Implementation:** Hosts the SCRE Web Frontend and the Risk Engine logic as containerized microservices.
+- **Benefit:** Ensures high availability and automatic scaling during high-traffic hackathon demos or user growth. [span_6](start_span)It manages the "Input Handling Layer" and "Result Output Layer" efficiently[span_6](end_span).
 
